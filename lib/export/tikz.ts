@@ -13,8 +13,6 @@ function fmt(v: number): string {
  */
 function lensBulge(R: number, halfHeight: number): number {
   if (!isFinite(R) || Math.abs(R) > 1e4) return 0;
-  // For a spherical surface of radius R, the sagitta for height h is:
-  // s = R - sqrt(R^2 - h^2), but for visual purposes we use a simpler mapping
   const absR = Math.abs(R);
   const h = halfHeight;
   if (absR < h) return h * 0.4 * Math.sign(R);
@@ -33,6 +31,14 @@ export function generateTikZ(
 
   lines.push("\\documentclass[border=10pt]{standalone}");
   lines.push("\\usepackage{tikz}");
+  lines.push("\\usetikzlibrary{decorations.markings}");
+  lines.push("");
+  lines.push("\\definecolor{glass}{cmyk}{0.2,0,0,0}");
+  lines.push("");
+  lines.push("\\tikzset{");
+  lines.push("  arrow inside/.style = {postaction=decorate, decoration={markings, mark=at position 0.52 with \\arrow{stealth}}}");
+  lines.push("}");
+  lines.push("");
   lines.push("\\begin{document}");
   lines.push("\\begin{tikzpicture}[>=stealth, scale=1, every node/.style={font=\\small}]");
   lines.push("");
@@ -51,7 +57,7 @@ export function generateTikZ(
   lines.push(`  \\draw[dashed, gray!60] (${fmt(minX)},0) -- (${fmt(maxX)},0);`);
   lines.push("");
 
-  // Lenses — draw as proper biconvex/biconcave shapes with fill
+  // Lenses — single closed path with both arcs (fill + outline)
   for (let i = 0; i < sorted.length; i++) {
     const lens = sorted[i];
     const f = getEffectiveFocalLength(lens);
@@ -90,21 +96,16 @@ export function generateTikZ(
       }
     }
 
-    // Draw lens as a filled shape: two arcs connected at top and bottom
-    // Left surface: arc from (x, -h) through (x + bulge1, 0) to (x, h)
-    // Right surface: arc from (x, h) through (x - bulge2, 0) to (x, -h)
     const lx = fmt(x);
     const ht = fmt(h);
     const hb = fmt(-h);
     const b1 = fmt(x + bulge1);
     const b2 = fmt(x - bulge2);
 
-    // Fill with light blue
-    lines.push(`  \\fill[cyan!10] (${lx},${hb}) .. controls (${b1},${hb}) and (${b1},${ht}) .. (${lx},${ht})`);
-    lines.push(`    .. controls (${b2},${ht}) and (${b2},${hb}) .. cycle;`);
-    // Outline
-    lines.push(`  \\draw[thick] (${lx},${hb}) .. controls (${b1},${hb}) and (${b1},${ht}) .. (${lx},${ht});`);
-    lines.push(`  \\draw[thick] (${lx},${ht}) .. controls (${b2},${ht}) and (${b2},${hb}) .. (${lx},${hb});`);
+    // Single closed path: bottom → left arc → top → right arc → cycle
+    // Left surface: (x, -h) through control (x+bulge1, 0) to (x, h)
+    // Right surface: (x, h) through control (x-bulge2, 0) back to (x, -h)
+    lines.push(`  \\path[fill=glass, draw=black, line width=0.6] (${lx},${hb}) .. controls (${b1},0) .. (${lx},${ht}) .. controls (${b2},0) .. (${lx},${hb});`);
 
     // Dashed center line through lens
     lines.push(`  \\draw[dashed, gray!40] (${lx},${fmt(-h - 15)}) -- (${lx},${fmt(h + 15)});`);
@@ -130,7 +131,7 @@ export function generateTikZ(
     lines.push("");
   }
 
-  // Rays — trace through each lens for each object
+  // Rays — trace through each lens for each object, using arrow inside decoration
   for (const obj of objects) {
     if (sorted.length === 0) continue;
     let currentObjPos = obj.position;
@@ -148,23 +149,21 @@ export function generateTikZ(
       lines.push(`  % Rays: Object at ${currentObjPos.toFixed(0)} through lens ${i + 1}`);
 
       // Ray 1: Parallel to axis → through focal point
-      lines.push(`  \\draw[red, ->, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(lens.position)},${fmt(currentObjHeight)});`);
+      lines.push(`  \\draw[red, arrow inside, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(lens.position)},${fmt(currentObjHeight)});`);
       if (f > 0) {
-        // Through far focal point and beyond
         const focalX = lens.position + f;
         const dx = focalX - lens.position;
         const dy = 0 - currentObjHeight;
         const extT = (rightBound - lens.position) / dx;
         const extY = currentObjHeight + dy * extT;
-        lines.push(`  \\draw[red, ->, thin] (${fmt(lens.position)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
+        lines.push(`  \\draw[red, arrow inside, thin] (${fmt(lens.position)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
       } else {
-        // Diverging: ray goes away from focal point
-        const focalX = lens.position + f; // negative f, so to the left
+        const focalX = lens.position + f;
         const dx = lens.position - focalX;
         const dy = currentObjHeight - 0;
         const extT = (rightBound - lens.position) / dx;
         const extY = currentObjHeight + dy * extT;
-        lines.push(`  \\draw[red, ->, thin] (${fmt(lens.position)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
+        lines.push(`  \\draw[red, arrow inside, thin] (${fmt(lens.position)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
       }
 
       // Ray 2: Through optical center
@@ -174,7 +173,7 @@ export function generateTikZ(
         if (Math.abs(dx) > 0.1) {
           const extT = (rightBound - currentObjPos) / dx;
           const extY = currentObjHeight + dy * extT;
-          lines.push(`  \\draw[red, ->, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
+          lines.push(`  \\draw[red, arrow inside, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(rightBound)},${fmt(extY)});`);
         }
       }
 
@@ -186,8 +185,8 @@ export function generateTikZ(
         if (Math.abs(dx) > 0.1) {
           const tLens = (lens.position - currentObjPos) / dx;
           const hitY = currentObjHeight + dy * tLens;
-          lines.push(`  \\draw[red, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(lens.position)},${fmt(hitY)});`);
-          lines.push(`  \\draw[red, ->, thin] (${fmt(lens.position)},${fmt(hitY)}) -- (${fmt(rightBound)},${fmt(hitY)});`);
+          lines.push(`  \\draw[red, arrow inside, thin] (${fmt(currentObjPos)},${fmt(currentObjHeight)}) -- (${fmt(lens.position)},${fmt(hitY)});`);
+          lines.push(`  \\draw[red, arrow inside, thin] (${fmt(lens.position)},${fmt(hitY)}) -- (${fmt(rightBound)},${fmt(hitY)});`);
         }
       }
 

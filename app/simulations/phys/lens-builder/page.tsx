@@ -13,6 +13,7 @@ import type {
   LensBuilderAction,
   ImageInfo,
 } from "@/components/lens-builder/types";
+import type { RenderForExportFn } from "@/components/lens-builder/RayCanvas";
 
 function reducer(
   state: LensBuilderState,
@@ -89,6 +90,7 @@ export default function LensBuilderPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [images, setImages] = useState<ImageInfo[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const renderForExportRef = useRef<RenderForExportFn | null>(null);
 
   // Load state from URL params on mount
   useEffect(() => {
@@ -152,6 +154,7 @@ export default function LensBuilderPage() {
           images={images}
           setImages={setImages}
           onCanvasReady={(el) => { canvasRef.current = el; }}
+          onRenderForExport={(fn) => { renderForExportRef.current = fn; }}
         />
         <LensControls
           lenses={state.lenses}
@@ -190,6 +193,7 @@ export default function LensBuilderPage() {
         images={images}
         positionOrigin={state.positionOrigin}
         canvasRef={canvasRef}
+        renderForExport={(bgColor) => renderForExportRef.current?.(bgColor) ?? null}
       />
     </div>
   );

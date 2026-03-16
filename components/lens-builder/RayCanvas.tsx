@@ -4,6 +4,8 @@ import { useRef, useEffect, useCallback } from "react";
 import type { Lens, LensObject, RaySegment, ImageInfo } from "./types";
 import { traceRays, getEffectiveFocalLength } from "@/lib/physics/optics";
 
+export type RenderForExportFn = (bgColor: string | null) => HTMLCanvasElement | null;
+
 interface RayCanvasProps {
   lenses: Lens[];
   objects: LensObject[];
@@ -16,6 +18,7 @@ interface RayCanvasProps {
   images: ImageInfo[];
   setImages: (images: ImageInfo[]) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  onRenderForExport?: (fn: RenderForExportFn) => void;
 }
 
 const SIM_RANGE_X = 500;
@@ -39,6 +42,7 @@ export default function RayCanvas({
   images: _images,
   setImages,
   onCanvasReady,
+  onRenderForExport,
 }: RayCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{
@@ -72,37 +76,39 @@ export default function RayCanvas({
     []
   );
 
-  const draw = useCallback(() => {
+  const drawToContext = useCallback((
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    bgColor: string | null,
+    converterOverride?: (x: number, y: number) => { cx: number; cy: number }
+  ) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.offsetWidth;
-    const h = canvas.offsetHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
     // Background
-    ctx.fillStyle = "#0d0d14";
-    ctx.fillRect(0, 0, w, h);
+    if (bgColor) {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    const convert = converterOverride ?? ((x: number, y: number) => simToCanvas(canvas, x, y));
 
     // Grid
     ctx.strokeStyle = "rgba(30,30,50,0.5)";
     ctx.lineWidth = 0.5;
     const gridStep = 50;
     for (let gx = -SIM_RANGE_X; gx <= SIM_RANGE_X; gx += gridStep) {
-      const { cx } = simToCanvas(canvas, gx, 0);
+      const { cx } = convert(gx, 0);
       ctx.beginPath();
       ctx.moveTo(cx, 0);
       ctx.lineTo(cx, h);
       ctx.stroke();
     }
     for (let gy = -SIM_RANGE_Y; gy <= SIM_RANGE_Y; gy += gridStep) {
-      const { cy } = simToCanvas(canvas, 0, gy);
+      const { cy } = convert(0, gy);
       ctx.beginPath();
       ctx.moveTo(0, cy);
       ctx.lineTo(w, cy);
@@ -110,7 +116,7 @@ export default function RayCanvas({
     }
 
     // Optical axis
-    const axisY = simToCanvas(canvas, 0, 0).cy;
+    const axisY = convert(0, 0).cy;
     ctx.strokeStyle = "rgba(136,136,160,0.4)";
     ctx.lineWidth = 1;
     ctx.setLineDash([8, 4]);
@@ -128,7 +134,7 @@ export default function RayCanvas({
     // Trace rays and collect images
     const allRays: RaySegment[] = [];
     const allImages: ImageInfo[] = [];
-    const converter = (x: number, y: number) => simToCanvas(canvas, x, y);
+    const converter = (x: number, y: number) => convert(x, y);
 
     for (const obj of objects) {
       const { rays, images: objImages } = traceRays(obj, lenses, SIM_RANGE_X, SIM_RANGE_Y, converter);
@@ -151,7 +157,7 @@ export default function RayCanvas({
     // Draw lenses
     for (const lens of lenses) {
       const f = getEffectiveFocalLength(lens);
-      const { cx, cy } = simToCanvas(canvas, lens.position, 0);
+      const { cx, cy } = convert(lens.position, 0);
       const lensH = (lens.height / SIM_RANGE_Y) * (h / 2);
       const isSelected = lens.id === selectedLensId;
       const lensNum = lensNumberMap.get(lens.id) ?? 1;
@@ -176,8 +182,8 @@ export default function RayCanvas({
       }
 
       // Focal points
-      const focalLeft = simToCanvas(canvas, lens.position - Math.abs(f), 0);
-      const focalRight = simToCanvas(canvas, lens.position + Math.abs(f), 0);
+      const focalLeft = convert(lens.position - Math.abs(f), 0);
+      const focalRight = convert(lens.position + Math.abs(f), 0);
       ctx.fillStyle = lens.labelColor + "99";
       for (const fp of [focalLeft, focalRight]) {
         ctx.beginPath();
@@ -201,8 +207,8 @@ export default function RayCanvas({
 
     // Draw objects
     for (const obj of objects) {
-      const base = simToCanvas(canvas, obj.position, 0);
-      const tip = simToCanvas(canvas, obj.position, obj.height);
+      const base = convert(obj.position, 0);
+      const tip = convert(obj.position, obj.height);
       const isSelected = obj.id === selectedObjectId;
 
       ctx.strokeStyle = obj.color;
@@ -240,8 +246,8 @@ export default function RayCanvas({
     for (let idx = 0; idx < allImages.length; idx++) {
       const img = allImages[idx];
       if (!isFinite(img.position) || Math.abs(img.position) > SIM_RANGE_X * 2) continue;
-      const base = simToCanvas(canvas, img.position, 0);
-      const tip = simToCanvas(canvas, img.position, img.height);
+      const base = convert(img.position, 0);
+      const tip = convert(img.position, img.height);
 
       ctx.strokeStyle = IMAGE_COLOR;
       ctx.lineWidth = 1.5;
@@ -270,20 +276,61 @@ export default function RayCanvas({
       ctx.fillText(`I${toSubscript(idx + 1)}`, tip.cx, tip.cy - 12);
     }
 
+    return allImages;
+  }, [lenses, objects, selectedLensId, selectedObjectId, simToCanvas]);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const allImages = drawToContext(ctx, w, h, "#0d0d14");
+
     // Only update images if they actually changed to avoid infinite re-render loop
-    const imagesKey = JSON.stringify(allImages.map(i => [i.objectId, i.lensIndex, i.position.toFixed(2), i.height.toFixed(2)]));
-    if (imagesKey !== prevImagesRef.current) {
-      prevImagesRef.current = imagesKey;
-      setImages(allImages);
+    if (allImages) {
+      const imagesKey = JSON.stringify(allImages.map(i => [i.objectId, i.lensIndex, i.position.toFixed(2), i.height.toFixed(2)]));
+      if (imagesKey !== prevImagesRef.current) {
+        prevImagesRef.current = imagesKey;
+        setImages(allImages);
+      }
     }
-  }, [lenses, objects, selectedLensId, selectedObjectId, simToCanvas, setImages]);
+  }, [drawToContext, setImages]);
+
+  const renderForExport = useCallback((bgColor: string | null): HTMLCanvasElement | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+
+    const offscreen = document.createElement("canvas");
+    offscreen.width = w * dpr;
+    offscreen.height = h * dpr;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawToContext(ctx, w, h, bgColor, (x: number, y: number) => simToCanvas(canvas, x, y));
+
+    return offscreen;
+  }, [drawToContext, simToCanvas]);
 
   useEffect(() => {
     draw();
     if (onCanvasReady && canvasRef.current) onCanvasReady(canvasRef.current);
+    if (onRenderForExport) onRenderForExport(renderForExport);
     window.addEventListener("resize", draw);
     return () => window.removeEventListener("resize", draw);
-  }, [draw, onCanvasReady]);
+  }, [draw, onCanvasReady, onRenderForExport, renderForExport]);
 
   // Mouse interactions
   const handleMouseDown = useCallback(

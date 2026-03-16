@@ -443,23 +443,40 @@ function EditableValue({
   label,
   value,
   onChange,
+  step = 1,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  step?: number;
 }) {
   return (
     <div>
       <span className="text-text-muted">{label}</span>
-      <input
-        type="number"
-        value={Math.round(value)}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          if (!isNaN(v)) onChange(v);
-        }}
-        className="ml-1 w-20 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs text-foreground focus:border-accent/50 focus:outline-none"
-      />
+      <div className="mt-0.5 inline-flex items-stretch rounded border border-border bg-background">
+        <button
+          onClick={() => onChange(Math.round(value) - step)}
+          className="cursor-pointer px-1.5 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+        >
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={Math.round(value)}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!isNaN(v)) onChange(v);
+          }}
+          className="w-14 border-x border-border bg-transparent px-1.5 py-0.5 text-center font-mono text-xs text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          onClick={() => onChange(Math.round(value) + step)}
+          className="cursor-pointer px-1.5 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }

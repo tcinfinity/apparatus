@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 
 interface SimulationNavProps {
@@ -43,6 +44,9 @@ export default function SimulationNav({
       </Link>
       <div className="h-5 w-px bg-border" />
       <span className="text-sm font-medium text-foreground">{title}</span>
+      <div className="ml-auto">
+        <ThemeToggle />
+      </div>
     </nav>
   );
 }

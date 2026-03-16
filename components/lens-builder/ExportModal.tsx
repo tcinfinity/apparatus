@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import type { Lens, LensObject, ImageInfo } from "./types";
+import type { RenderForExportFn } from "./RayCanvas";
 import { generateTikZ } from "@/lib/export/tikz";
 
 type Tab = "image" | "link" | "tikz";
@@ -18,6 +19,7 @@ interface ExportModalProps {
   images: ImageInfo[];
   positionOrigin: number;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  renderForExport?: RenderForExportFn;
 }
 
 export default function ExportModal({
@@ -28,6 +30,7 @@ export default function ExportModal({
   images,
   positionOrigin,
   canvasRef,
+  renderForExport,
 }: ExportModalProps) {
   const [tab, setTab] = useState<Tab>("image");
   const [format, setFormat] = useState<ImageFormat>("png");
@@ -53,31 +56,32 @@ export default function ExportModal({
   }, []);
 
   const handleImageDownload = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const offscreen = document.createElement("canvas");
-    offscreen.width = canvas.width;
-    offscreen.height = canvas.height;
-    const octx = offscreen.getContext("2d");
-    if (!octx) return;
-
+    let bgColor: string | null;
     if (background === "white") {
-      octx.fillStyle = "#ffffff";
-      octx.fillRect(0, 0, offscreen.width, offscreen.height);
-      octx.drawImage(canvas, 0, 0);
+      bgColor = "#ffffff";
     } else if (background === "none" && format === "png") {
-      // Transparent — just draw without any background
-      octx.drawImage(canvas, 0, 0);
+      bgColor = null;
     } else {
-      // Dark background (default) — just copy canvas as-is
-      octx.drawImage(canvas, 0, 0);
+      bgColor = "#0d0d14";
     }
 
+    // Use renderForExport to re-render with the chosen background
+    if (renderForExport) {
+      const offscreen = renderForExport(bgColor);
+      if (!offscreen) return;
+      const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+      const url = offscreen.toDataURL(mimeType, format === "jpeg" ? 0.95 : undefined);
+      downloadDataUrl(url, `lens-diagram.${format}`);
+      return;
+    }
+
+    // Fallback: copy canvas directly
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
-    const url = offscreen.toDataURL(mimeType, format === "jpeg" ? 0.95 : undefined);
+    const url = canvas.toDataURL(mimeType, format === "jpeg" ? 0.95 : undefined);
     downloadDataUrl(url, `lens-diagram.${format}`);
-  }, [canvasRef, format, background]);
+  }, [canvasRef, format, background, renderForExport]);
 
   const shareUrl = useCallback(() => {
     const stateObj = { lenses, objects, positionOrigin };
