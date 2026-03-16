@@ -20,7 +20,7 @@ export default function Logo({ size = "md", className }: LogoProps) {
       <span
         className={cn(
           s.app,
-          "font-mono font-bold tracking-tight text-foreground"
+          "font-mono font-bold tracking-tight text-accent"
         )}
       >
         app

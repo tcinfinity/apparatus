@@ -12,6 +12,7 @@ export interface Lens {
   r2: number;             // radius of curvature surface 2
   thickness: number;      // lens thickness (used in thick mode)
   refractiveIndex: number;
+  labelColor: string;     // unique color for lens label on canvas
 }
 
 export interface LensObject {
@@ -32,6 +33,7 @@ export interface RaySegment {
 
 export interface ImageInfo {
   objectId: string;
+  lensIndex: number;      // which lens produced this image (0-based)
   position: number;
   height: number;
   magnification: number;
@@ -56,4 +58,5 @@ export type LensBuilderAction =
   | { type: "REMOVE_OBJECT"; id: string }
   | { type: "SELECT_LENS"; id: string | null }
   | { type: "SELECT_OBJECT"; id: string | null }
-  | { type: "SET_DRAG"; target: LensBuilderState["dragTarget"] };
+  | { type: "SET_DRAG"; target: LensBuilderState["dragTarget"] }
+  | { type: "SET_ORIGIN"; objectId: string };

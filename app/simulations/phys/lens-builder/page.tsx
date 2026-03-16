@@ -56,6 +56,22 @@ function reducer(
       return { ...state, selectedObjectId: action.id };
     case "SET_DRAG":
       return { ...state, dragTarget: action.target };
+    case "SET_ORIGIN": {
+      const obj = state.objects.find((o) => o.id === action.objectId);
+      if (!obj) return state;
+      const offset = obj.position;
+      return {
+        ...state,
+        objects: state.objects.map((o) => ({
+          ...o,
+          position: o.position - offset,
+        })),
+        lenses: state.lenses.map((l) => ({
+          ...l,
+          position: l.position - offset,
+        })),
+      };
+    }
     default:
       return state;
   }
@@ -83,11 +99,7 @@ export default function LensBuilderPage() {
 
   const handleDragObject = useCallback(
     (id: string, newPosition: number) => {
-      dispatch({
-        type: "UPDATE_OBJECT",
-        id,
-        updates: { position: newPosition },
-      });
+      dispatch({ type: "UPDATE_OBJECT", id, updates: { position: newPosition } });
     },
     []
   );
@@ -96,10 +108,9 @@ export default function LensBuilderPage() {
     <div className="flex min-h-screen flex-col bg-background">
       <SimulationNav title="Lens Builder" />
 
-      {/* Help button */}
       <button
         onClick={() => setHelpOpen(true)}
-        className="fixed right-4 top-16 z-40 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-sm text-text-muted transition-colors hover:border-accent hover:text-accent"
+        className="fixed right-4 top-16 z-40 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-sm text-text-muted transition-colors hover:border-accent hover:text-accent"
         title="Help"
       >
         ?
@@ -137,6 +148,9 @@ export default function LensBuilderPage() {
           onRemoveLens={(id: string) => dispatch({ type: "REMOVE_LENS", id })}
           onRemoveObject={(id: string) =>
             dispatch({ type: "REMOVE_OBJECT", id })
+          }
+          onSetOrigin={(objectId: string) =>
+            dispatch({ type: "SET_ORIGIN", objectId })
           }
         />
       </main>

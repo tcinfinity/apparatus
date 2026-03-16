@@ -18,15 +18,20 @@ interface LensControlsProps {
   onUpdateObject: (id: string, updates: Partial<LensObject>) => void;
   onRemoveLens: (id: string) => void;
   onRemoveObject: (id: string) => void;
+  onSetOrigin: (objectId: string) => void;
 }
 
-const OBJECT_COLORS = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#a78bfa"];
+const OBJECT_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#a78bfa", "#fb923c"];
+const LABEL_COLORS = ["#f97316", "#06b6d4", "#22c55e", "#eab308", "#ec4899", "#14b8a6"];
 let colorIndex = 0;
+let labelColorIndex = 0;
 
 function nextColor(): string {
-  const c = OBJECT_COLORS[colorIndex % OBJECT_COLORS.length];
-  colorIndex++;
-  return c;
+  return OBJECT_COLORS[colorIndex++ % OBJECT_COLORS.length];
+}
+
+function nextLabelColor(): string {
+  return LABEL_COLORS[labelColorIndex++ % LABEL_COLORS.length];
 }
 
 let idCounter = 0;
@@ -41,6 +46,12 @@ const LENS_TYPES: { type: LensType; label: string }[] = [
   { type: "plano-concave", label: "Plano-concave" },
 ];
 
+// Subscript digits for labels
+const SUBSCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+function toSubscript(n: number): string {
+  return String(n).split("").map(d => SUBSCRIPT_DIGITS[parseInt(d)]).join("");
+}
+
 export default function LensControls({
   lenses,
   objects,
@@ -53,6 +64,7 @@ export default function LensControls({
   onUpdateObject,
   onRemoveLens,
   onRemoveObject,
+  onSetOrigin,
 }: LensControlsProps) {
   const handleAddLens = useCallback(
     (type: LensType) => {
@@ -70,6 +82,7 @@ export default function LensControls({
         r2: radii.r2,
         thickness: Math.abs(f) / 10,
         refractiveIndex: 1.5,
+        labelColor: nextLabelColor(),
       };
       onAddLens(lens);
     },
@@ -89,10 +102,10 @@ export default function LensControls({
   const selectedLens = lenses.find((l) => l.id === selectedLensId);
   const selectedObject = objects.find((o) => o.id === selectedObjectId);
 
-  // Find image for selected object
-  const selectedImage = selectedObjectId
-    ? images.find((img) => img.objectId === selectedObjectId)
-    : null;
+  // Sorted lens index for display
+  const sortedLenses = [...lenses].sort((a, b) => a.position - b.position);
+  const lensNumMap = new Map<string, number>();
+  sortedLenses.forEach((l, i) => lensNumMap.set(l.id, i + 1));
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,26 +133,30 @@ export default function LensControls({
         <div className="rounded-lg border border-border bg-surface p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
+              <span style={{ color: selectedLens.labelColor }}>
+                L{toSubscript(lensNumMap.get(selectedLens.id) ?? 1)}
+              </span>
+              {" "}
               {selectedLens.type.replace("-", " ")} Lens
             </h3>
             <button
               onClick={() => onRemoveLens(selectedLens.id)}
-              className="text-xs text-text-muted hover:text-red-400"
+              className="cursor-pointer text-xs text-text-muted hover:text-red-400"
             >
               Remove
             </button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <LabeledValue
+            <EditableValue
               label="Position"
-              value={`${selectedLens.position.toFixed(0)}`}
+              value={selectedLens.position}
+              onChange={(v) => onUpdateLens(selectedLens.id, { position: v })}
             />
             <LabeledValue
               label="f (focal length)"
               value={`${getEffectiveFocalLength(selectedLens).toFixed(1)}`}
             />
 
-            {/* Focal length slider (when not computing from R1/R2) */}
             {!selectedLens.allowDifferentCurvature && (
               <div className="col-span-2">
                 <label className="mb-1 block text-text-muted">
@@ -152,24 +169,19 @@ export default function LensControls({
                   step="5"
                   value={selectedLens.focalLength}
                   onChange={(e) =>
-                    onUpdateLens(selectedLens.id, {
-                      focalLength: Number(e.target.value),
-                    })
+                    onUpdateLens(selectedLens.id, { focalLength: Number(e.target.value) })
                   }
                   className="w-full accent-accent"
                 />
               </div>
             )}
 
-            {/* Checkboxes */}
-            <label className="col-span-2 flex items-center gap-2 text-text-muted">
+            <label className="col-span-2 flex cursor-pointer items-center gap-2 text-text-muted">
               <input
                 type="checkbox"
                 checked={selectedLens.allowDifferentCurvature}
                 onChange={(e) =>
-                  onUpdateLens(selectedLens.id, {
-                    allowDifferentCurvature: e.target.checked,
-                  })
+                  onUpdateLens(selectedLens.id, { allowDifferentCurvature: e.target.checked })
                 }
                 className="accent-accent"
               />
@@ -180,7 +192,7 @@ export default function LensControls({
               <>
                 <div>
                   <label className="mb-1 block text-text-muted">
-                    R1: {selectedLens.r1.toFixed(0)}
+                    R1: {isFinite(selectedLens.r1) ? selectedLens.r1.toFixed(0) : "∞"}
                   </label>
                   <input
                     type="range"
@@ -189,16 +201,14 @@ export default function LensControls({
                     step="5"
                     value={isFinite(selectedLens.r1) ? selectedLens.r1 : 500}
                     onChange={(e) =>
-                      onUpdateLens(selectedLens.id, {
-                        r1: Number(e.target.value),
-                      })
+                      onUpdateLens(selectedLens.id, { r1: Number(e.target.value) })
                     }
                     className="w-full accent-accent"
                   />
                 </div>
                 <div>
                   <label className="mb-1 block text-text-muted">
-                    R2: {selectedLens.r2.toFixed(0)}
+                    R2: {isFinite(selectedLens.r2) ? selectedLens.r2.toFixed(0) : "∞"}
                   </label>
                   <input
                     type="range"
@@ -207,22 +217,18 @@ export default function LensControls({
                     step="5"
                     value={isFinite(selectedLens.r2) ? selectedLens.r2 : -500}
                     onChange={(e) =>
-                      onUpdateLens(selectedLens.id, {
-                        r2: Number(e.target.value),
-                      })
+                      onUpdateLens(selectedLens.id, { r2: Number(e.target.value) })
                     }
                     className="w-full accent-accent"
                   />
                 </div>
 
-                <label className="col-span-2 flex items-center gap-2 text-text-muted">
+                <label className="col-span-2 flex cursor-pointer items-center gap-2 text-text-muted">
                   <input
                     type="checkbox"
                     checked={selectedLens.thickLensMode}
                     onChange={(e) =>
-                      onUpdateLens(selectedLens.id, {
-                        thickLensMode: e.target.checked,
-                      })
+                      onUpdateLens(selectedLens.id, { thickLensMode: e.target.checked })
                     }
                     className="accent-accent"
                   />
@@ -242,9 +248,7 @@ export default function LensControls({
                         step="1"
                         value={selectedLens.thickness}
                         onChange={(e) =>
-                          onUpdateLens(selectedLens.id, {
-                            thickness: Number(e.target.value),
-                          })
+                          onUpdateLens(selectedLens.id, { thickness: Number(e.target.value) })
                         }
                         className="w-full accent-accent"
                       />
@@ -260,9 +264,7 @@ export default function LensControls({
                         step="0.01"
                         value={selectedLens.refractiveIndex}
                         onChange={(e) =>
-                          onUpdateLens(selectedLens.id, {
-                            refractiveIndex: Number(e.target.value),
-                          })
+                          onUpdateLens(selectedLens.id, { refractiveIndex: Number(e.target.value) })
                         }
                         className="w-full accent-accent"
                       />
@@ -286,21 +288,31 @@ export default function LensControls({
                 style={{ backgroundColor: selectedObject.color }}
               />
             </h3>
-            <button
-              onClick={() => onRemoveObject(selectedObject.id)}
-              className="text-xs text-text-muted hover:text-red-400"
-            >
-              Remove
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onSetOrigin(selectedObject.id)}
+                className="cursor-pointer text-xs text-accent hover:text-accent-hover"
+              >
+                Set as Origin
+              </button>
+              <button
+                onClick={() => onRemoveObject(selectedObject.id)}
+                className="cursor-pointer text-xs text-text-muted hover:text-red-400"
+              >
+                Remove
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <LabeledValue
+            <EditableValue
               label="Position"
-              value={`${selectedObject.position.toFixed(0)}`}
+              value={selectedObject.position}
+              onChange={(v) => onUpdateObject(selectedObject.id, { position: v })}
             />
-            <LabeledValue
+            <EditableValue
               label="Height"
-              value={`${selectedObject.height.toFixed(0)}`}
+              value={selectedObject.height}
+              onChange={(v) => onUpdateObject(selectedObject.id, { height: v })}
             />
             <div className="col-span-2">
               <label className="mb-1 block text-text-muted">
@@ -313,9 +325,7 @@ export default function LensControls({
                 step="5"
                 value={selectedObject.height}
                 onChange={(e) =>
-                  onUpdateObject(selectedObject.id, {
-                    height: Number(e.target.value),
-                  })
+                  onUpdateObject(selectedObject.id, { height: Number(e.target.value) })
                 }
                 className="w-full accent-accent"
               />
@@ -329,12 +339,12 @@ export default function LensControls({
         <div className="rounded-lg border border-border bg-surface p-4">
           <h3 className="mb-2 text-sm font-semibold">Image Properties</h3>
           <div className="space-y-2">
-            {images.map((img) => {
+            {images.map((img, idx) => {
               const srcObj = objects.find((o) => o.id === img.objectId);
               if (!srcObj || !isFinite(img.position)) return null;
               return (
                 <div
-                  key={img.objectId}
+                  key={`${img.objectId}-${img.lensIndex}`}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-2 py-1.5 text-xs",
                     img.objectId === selectedObjectId
@@ -342,6 +352,9 @@ export default function LensControls({
                       : "bg-surface-hover"
                   )}
                 >
+                  <span className="font-mono font-semibold text-red-400">
+                    I{toSubscript(idx + 1)}
+                  </span>
                   <span
                     className="inline-block h-2 w-2 rounded-full"
                     style={{ backgroundColor: srcObj.color }}
@@ -378,6 +391,31 @@ function LabeledValue({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-text-muted">{label}</span>
       <span className="ml-1 font-mono text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function EditableValue({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <span className="text-text-muted">{label}</span>
+      <input
+        type="number"
+        value={Math.round(value)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!isNaN(v)) onChange(v);
+        }}
+        className="ml-1 w-20 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs text-foreground focus:border-accent/50 focus:outline-none"
+      />
     </div>
   );
 }

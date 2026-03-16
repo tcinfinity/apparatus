@@ -4,13 +4,38 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
+function renderLatex(latex: string): string {
+  try {
+    return katex.renderToString(latex, { throwOnError: false, displayMode: true });
+  } catch {
+    return latex;
+  }
+}
+
+function renderInlineLatex(latex: string): string {
+  try {
+    return katex.renderToString(latex, { throwOnError: false, displayMode: false });
+  } catch {
+    return latex;
+  }
+}
 
 interface HelpModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const steps = [
+interface StepContent {
+  title: string;
+  description: string;
+  equations?: string[]; // display-mode LaTeX
+  detail: string;
+}
+
+const steps: StepContent[] = [
   {
     title: "1. Add a Lens",
     description:
@@ -30,21 +55,30 @@ const steps = [
     description:
       "Three principal rays are automatically traced from the object tip through the lens:",
     detail:
-      "Ray 1: Parallel to axis → refracts through far focal point.\nRay 2: Through optical centre → passes straight.\nRay 3: Through near focal point → exits parallel.\n\nWhere these rays converge is the image position.",
+      "Ray 1: Parallel to axis \u2192 refracts through far focal point.\nRay 2: Through optical centre \u2192 passes straight.\nRay 3: Through near focal point \u2192 exits parallel.\n\nWhere these rays converge is the image position.",
+    equations: [
+      "\\frac{1}{v} - \\frac{1}{u} = \\frac{1}{f}",
+    ],
   },
   {
     title: "4. Drag to Explore",
     description:
       "Click and drag objects or lenses along the axis to see how the image changes in real time. The image properties panel shows magnification and type.",
+    equations: [
+      "m = \\frac{v}{u}",
+    ],
     detail:
       "Move the object closer to the focal point to see the image grow larger. Place it between the focal point and lens to see a virtual image (shown with dashed rays).",
   },
   {
     title: "5. Advanced: Thick Lens Mode",
     description:
-      'Select a lens, check "Allow different curvature" to set R1 and R2 independently. Then enable "Thick lens mode" to account for lens thickness using the lensmaker\'s equation.',
+      'Select a lens, check "Allow different curvature" to set R\u2081 and R\u2082 independently. Then enable "Thick lens mode" to account for lens thickness using the lensmaker\'s equation.',
+    equations: [
+      "\\frac{1}{f} = (n-1)\\left[\\frac{1}{R_1} - \\frac{1}{R_2} + \\frac{(n-1)d}{n \\cdot R_1 \\cdot R_2}\\right]",
+    ],
     detail:
-      "1/f = (n-1)[1/R₁ - 1/R₂ + (n-1)d/(n·R₁·R₂)]\n\nAdjust the refractive index (n) and thickness (d) to see how they affect the focal length.",
+      "Adjust the refractive index (n) and thickness (d) to see how they affect the focal length.",
   },
 ];
 
@@ -53,6 +87,8 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
 
   const goNext = () => setStep((s) => Math.min(s + 1, steps.length - 1));
   const goPrev = () => setStep((s) => Math.max(s - 1, 0));
+
+  const current = steps[step];
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -70,14 +106,27 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
             transition={{ duration: 0.2 }}
           >
             <h3 className="mb-2 text-sm font-semibold text-accent">
-              {steps[step].title}
+              {current.title}
             </h3>
             <p className="mb-3 text-sm text-foreground/90">
-              {steps[step].description}
+              {current.description}
             </p>
-            <pre className="whitespace-pre-wrap rounded-md bg-background p-3 text-xs text-text-muted">
-              {steps[step].detail}
-            </pre>
+
+            {current.equations && current.equations.length > 0 && (
+              <div className="mb-3 space-y-2">
+                {current.equations.map((eq, i) => (
+                  <div
+                    key={i}
+                    className="overflow-x-auto rounded-md bg-background px-4 py-3 text-center"
+                    dangerouslySetInnerHTML={{ __html: renderLatex(eq) }}
+                  />
+                ))}
+              </div>
+            )}
+
+            <p className="whitespace-pre-wrap rounded-md bg-background p-3 text-xs text-text-muted">
+              {current.detail}
+            </p>
           </motion.div>
         </AnimatePresence>
 
@@ -88,7 +137,7 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
               <button
                 key={i}
                 onClick={() => setStep(i)}
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1.5 cursor-pointer rounded-full transition-all ${
                   i === step
                     ? "w-6 bg-accent"
                     : "w-1.5 bg-border hover:bg-border-hover"

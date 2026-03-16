@@ -6,16 +6,14 @@ import type { Lens, LensObject, RaySegment, ImageInfo } from "@/components/lens-
  * Returns v (image distance from lens)
  */
 export function thinLensImageDistance(u: number, f: number): number {
-  // 1/v = 1/f + 1/u  (since 1/v - 1/u = 1/f => 1/v = 1/f + 1/u)
   const invV = 1 / f + 1 / u;
-  if (Math.abs(invV) < 1e-10) return Infinity; // object at focal point
+  if (Math.abs(invV) < 1e-10) return Infinity;
   return 1 / invV;
 }
 
 /**
  * Lensmaker's equation:
  * 1/f = (n-1) * [1/R1 - 1/R2 + (n-1)*d / (n*R1*R2)]
- * Sign convention: R positive if center of curvature is to the right
  */
 export function lensmakersEquation(
   r1: number,
@@ -36,12 +34,7 @@ export function lensmakersEquation(
  */
 export function getEffectiveFocalLength(lens: Lens): number {
   if (lens.thickLensMode && lens.allowDifferentCurvature) {
-    return lensmakersEquation(
-      lens.r1,
-      lens.r2,
-      lens.refractiveIndex,
-      lens.thickness
-    );
+    return lensmakersEquation(lens.r1, lens.r2, lens.refractiveIndex, lens.thickness);
   }
   if (lens.allowDifferentCurvature) {
     return lensmakersEquation(lens.r1, lens.r2, lens.refractiveIndex);
@@ -58,32 +51,72 @@ export function computeImageThroughLens(
   lensPos: number,
   focalLength: number
 ): { imagePos: number; imageHeight: number; magnification: number } {
-  // u = object distance from lens (negative for real object to the left)
   const u = objectPos - lensPos;
-
   if (Math.abs(u) < 1e-6) {
-    // Object is at the lens
     return { imagePos: objectPos, imageHeight: objectHeight, magnification: 1 };
   }
-
   const v = thinLensImageDistance(u, focalLength);
-
   if (!isFinite(v)) {
-    // Object at focal point - image at infinity
     return { imagePos: lensPos + 10000, imageHeight: 0, magnification: 0 };
   }
+  const m = v / u;
+  return { imagePos: lensPos + v, imageHeight: objectHeight * m, magnification: m };
+}
 
-  const m = v / u; // lateral magnification
+/**
+ * Snell's law refraction at a spherical surface (paraxial approximation).
+ * Given incoming ray angle and height at the surface, compute outgoing angle.
+ * n1*sin(theta1) = n2*sin(theta2) => paraxial: n1*theta1 = n2*theta2
+ * At a spherical surface of radius R: theta_out = (n1/n2)*theta_in - (n2-n1)/(n2*R) * h
+ */
+export function refractAtSurface(
+  angleIn: number,
+  heightAtSurface: number,
+  n1: number,
+  n2: number,
+  R: number
+): number {
+  if (!isFinite(R) || Math.abs(R) > 1e6) {
+    // Flat surface
+    return (n1 / n2) * angleIn;
+  }
+  return (n1 / n2) * angleIn - ((n2 - n1) / (n2 * R)) * heightAtSurface;
+}
+
+/**
+ * Trace a single ray through a thick lens.
+ * Returns intermediate points: [enter front surface, exit back surface]
+ */
+export function traceThickLensRay(
+  rayHeight: number,
+  rayAngle: number,
+  lens: Lens
+): { frontH: number; frontAngle: number; backH: number; backAngle: number } {
+  const n = lens.refractiveIndex;
+  const d = lens.thickness;
+  const r1 = lens.r1;
+  const r2 = lens.r2;
+
+  // Refract at front surface (air → glass)
+  const angleAfterFront = refractAtSurface(rayAngle, rayHeight, 1.0, n, r1);
+
+  // Propagate through lens medium
+  const heightAtBack = rayHeight + angleAfterFront * d;
+
+  // Refract at back surface (glass → air)
+  const angleAfterBack = refractAtSurface(angleAfterFront, heightAtBack, n, 1.0, r2);
+
   return {
-    imagePos: lensPos + v,
-    imageHeight: objectHeight * m,
-    magnification: m,
+    frontH: rayHeight,
+    frontAngle: angleAfterFront,
+    backH: heightAtBack,
+    backAngle: angleAfterBack,
   };
 }
 
 /**
  * Trace rays through a multi-lens system for a given object.
- * Returns ray segments and final image info.
+ * Returns ray segments and ALL intermediate + final images.
  */
 export function traceRays(
   obj: LensObject,
@@ -91,15 +124,14 @@ export function traceRays(
   canvasWidth: number,
   canvasHeight: number,
   simToCanvas: (x: number, y: number) => { cx: number; cy: number },
-): { rays: RaySegment[]; image: ImageInfo | null } {
-  if (lenses.length === 0) return { rays: [], image: null };
+): { rays: RaySegment[]; images: ImageInfo[] } {
+  if (lenses.length === 0) return { rays: [], images: [] };
 
-  // Sort lenses by position (left to right)
   const sortedLenses = [...lenses].sort((a, b) => a.position - b.position);
-
   const rays: RaySegment[] = [];
+  const images: ImageInfo[] = [];
   const rayColor = obj.color;
-  const rayAlpha = "66"; // ~40% opacity in hex
+  const rayAlpha = "66";
 
   let currentObjPos = obj.position;
   let currentObjHeight = obj.height;
@@ -110,168 +142,135 @@ export function traceRays(
     const f = getEffectiveFocalLength(lens);
 
     const { imagePos, imageHeight, magnification } = computeImageThroughLens(
-      currentObjPos,
-      currentObjHeight,
-      lens.position,
-      f
+      currentObjPos, currentObjHeight, lens.position, f
     );
 
-    const isVirtual = imagePos < lens.position; // image on same side as object for this lens
+    const isVirtual = imagePos < lens.position;
     const leftBound = i === 0 ? -canvasWidth : sortedLenses[i - 1].position;
-    const rightBound =
-      i === sortedLenses.length - 1
-        ? canvasWidth
-        : sortedLenses[i + 1].position;
+    const rightBound = i === sortedLenses.length - 1 ? canvasWidth : sortedLenses[i + 1].position;
 
-    // Ray 1: Parallel to axis → through far focal point
-    // From object tip, parallel to axis, hits lens, then toward/through focal point
     const objTip = simToCanvas(currentObjPos, currentObjHeight);
     const lensCenter = simToCanvas(lens.position, 0);
     const lensTop = simToCanvas(lens.position, currentObjHeight);
 
-    // Parallel ray: object tip → lens at same height
-    rays.push({
-      x1: objTip.cx,
-      y1: objTip.cy,
-      x2: lensTop.cx,
-      y2: lensTop.cy,
-      dashed: false,
-      color: rayColor + rayAlpha,
-    });
+    const isThick = lens.thickLensMode && lens.allowDifferentCurvature;
+    const halfThick = isThick ? lens.thickness / 2 : 0;
+    const frontX = lens.position - halfThick;
+    const backX = lens.position + halfThick;
 
-    // After lens: through focal point
-    const focalFar = simToCanvas(lens.position + f, 0);
-    if (f > 0) {
-      // Converging: ray goes through far focal point
-      // Extend line from (lensTop) through (focalFar) to edge
-      const dx = focalFar.cx - lensTop.cx;
-      const dy = focalFar.cy - lensTop.cy;
-      if (Math.abs(dx) > 0.1) {
-        const extendX = dx > 0 ? simToCanvas(rightBound, 0).cx : simToCanvas(leftBound, 0).cx;
-        const t = (extendX - lensTop.cx) / dx;
-        rays.push({
-          x1: lensTop.cx,
-          y1: lensTop.cy,
-          x2: lensTop.cx + dx * t,
-          y2: lensTop.cy + dy * t,
-          dashed: false,
-          color: rayColor + rayAlpha,
-        });
-      }
+    // Ray 1: Parallel to axis → through far focal point
+    if (isThick) {
+      const frontSurface = simToCanvas(frontX, currentObjHeight);
+      // Ray to front surface
+      rays.push({ x1: objTip.cx, y1: objTip.cy, x2: frontSurface.cx, y2: frontSurface.cy, dashed: false, color: rayColor + rayAlpha });
+      // Trace through thick lens
+      const traced = traceThickLensRay(currentObjHeight, 0, lens);
+      const backSurface = simToCanvas(backX, traced.backH);
+      // Through lens medium
+      rays.push({ x1: frontSurface.cx, y1: frontSurface.cy, x2: backSurface.cx, y2: backSurface.cy, dashed: false, color: rayColor + "44" });
+      // After back surface - extend using exit angle
+      const exitPt = simToCanvas(backX, traced.backH);
+      const farPt = simToCanvas(rightBound, traced.backH + traced.backAngle * (rightBound - backX));
+      rays.push({ x1: exitPt.cx, y1: exitPt.cy, x2: farPt.cx, y2: farPt.cy, dashed: false, color: rayColor + rayAlpha });
     } else {
-      // Diverging: ray appears to come from near focal point
-      // It actually diverges, so draw the real diverging ray forward
-      const nearFocal = simToCanvas(lens.position + f, 0); // f is negative, so this is to the left
-      const dx = lensTop.cx - nearFocal.cx;
-      const dy = lensTop.cy - nearFocal.cy;
-      if (Math.abs(dx) > 0.1) {
-        const extendX = simToCanvas(rightBound, 0).cx;
-        const t = (extendX - lensTop.cx) / dx;
-        rays.push({
-          x1: lensTop.cx,
-          y1: lensTop.cy,
-          x2: lensTop.cx + dx * t,
-          y2: lensTop.cy + dy * t,
-          dashed: false,
-          color: rayColor + rayAlpha,
-        });
-        // Dashed extension backward to focal point
-        rays.push({
-          x1: lensTop.cx,
-          y1: lensTop.cy,
-          x2: nearFocal.cx,
-          y2: nearFocal.cy,
-          dashed: true,
-          color: rayColor + rayAlpha,
-        });
+      // Thin lens: parallel ray
+      rays.push({ x1: objTip.cx, y1: objTip.cy, x2: lensTop.cx, y2: lensTop.cy, dashed: false, color: rayColor + rayAlpha });
+
+      const focalFar = simToCanvas(lens.position + f, 0);
+      if (f > 0) {
+        const dx = focalFar.cx - lensTop.cx;
+        const dy = focalFar.cy - lensTop.cy;
+        if (Math.abs(dx) > 0.1) {
+          const extendX = dx > 0 ? simToCanvas(rightBound, 0).cx : simToCanvas(leftBound, 0).cx;
+          const t = (extendX - lensTop.cx) / dx;
+          rays.push({ x1: lensTop.cx, y1: lensTop.cy, x2: lensTop.cx + dx * t, y2: lensTop.cy + dy * t, dashed: false, color: rayColor + rayAlpha });
+        }
+      } else {
+        const nearFocal = simToCanvas(lens.position + f, 0);
+        const dx = lensTop.cx - nearFocal.cx;
+        const dy = lensTop.cy - nearFocal.cy;
+        if (Math.abs(dx) > 0.1) {
+          const extendX = simToCanvas(rightBound, 0).cx;
+          const t = (extendX - lensTop.cx) / dx;
+          rays.push({ x1: lensTop.cx, y1: lensTop.cy, x2: lensTop.cx + dx * t, y2: lensTop.cy + dy * t, dashed: false, color: rayColor + rayAlpha });
+          rays.push({ x1: lensTop.cx, y1: lensTop.cy, x2: nearFocal.cx, y2: nearFocal.cy, dashed: true, color: rayColor + rayAlpha });
+        }
       }
     }
 
     // Ray 2: Through optical center → straight through
-    const imgTip = simToCanvas(imagePos, imageHeight);
-    {
+    if (isThick) {
+      const u = currentObjPos - lens.position;
+      const angle = currentObjHeight / (-u);
+      const frontSurface = simToCanvas(frontX, currentObjHeight + angle * (frontX - currentObjPos));
+      rays.push({ x1: objTip.cx, y1: objTip.cy, x2: frontSurface.cx, y2: frontSurface.cy, dashed: false, color: rayColor + rayAlpha });
+      // Through center (approximately)
+      const backSurface = simToCanvas(backX, currentObjHeight + angle * (backX - currentObjPos));
+      rays.push({ x1: frontSurface.cx, y1: frontSurface.cy, x2: backSurface.cx, y2: backSurface.cy, dashed: false, color: rayColor + "44" });
+      const farPt = simToCanvas(rightBound, currentObjHeight + angle * (rightBound - currentObjPos));
+      rays.push({ x1: backSurface.cx, y1: backSurface.cy, x2: farPt.cx, y2: farPt.cy, dashed: false, color: rayColor + rayAlpha });
+    } else {
       const dx = lensCenter.cx - objTip.cx;
       const dy = lensCenter.cy - objTip.cy;
       if (Math.abs(dx) > 0.1) {
         const extendX = dx > 0 ? simToCanvas(rightBound, 0).cx : simToCanvas(leftBound, 0).cx;
         const t = (extendX - objTip.cx) / dx;
-        rays.push({
-          x1: objTip.cx,
-          y1: objTip.cy,
-          x2: objTip.cx + dx * t,
-          y2: objTip.cy + dy * t,
-          dashed: false,
-          color: rayColor + rayAlpha,
-        });
+        rays.push({ x1: objTip.cx, y1: objTip.cy, x2: objTip.cx + dx * t, y2: objTip.cy + dy * t, dashed: false, color: rayColor + rayAlpha });
       }
     }
 
     // Ray 3: Through near focal point → exits parallel
-    const focalNear = simToCanvas(lens.position - f, 0);
-    {
-      // From object tip toward near focal point, then at lens exits parallel
+    if (isThick) {
+      const focalNear = lens.position - f;
+      const angle = currentObjHeight / (currentObjPos - focalNear);
+      const hAtFront = currentObjHeight + angle * (frontX - currentObjPos);
+      const frontSurface = simToCanvas(frontX, hAtFront);
+      rays.push({ x1: objTip.cx, y1: objTip.cy, x2: frontSurface.cx, y2: frontSurface.cy, dashed: false, color: rayColor + rayAlpha });
+      // Through thick lens — exits parallel
+      const traced = traceThickLensRay(hAtFront, angle, lens);
+      const backSurface = simToCanvas(backX, traced.backH);
+      rays.push({ x1: frontSurface.cx, y1: frontSurface.cy, x2: backSurface.cx, y2: backSurface.cy, dashed: false, color: rayColor + "44" });
+      // Exit parallel
+      const exitX = simToCanvas(rightBound, 0).cx;
+      rays.push({ x1: backSurface.cx, y1: backSurface.cy, x2: exitX, y2: backSurface.cy, dashed: false, color: rayColor + rayAlpha });
+    } else {
+      const focalNear = simToCanvas(lens.position - f, 0);
       const dx = focalNear.cx - objTip.cx;
       const dy = focalNear.cy - objTip.cy;
       if (Math.abs(dx) > 0.1) {
-        // Hit point on lens
         const tLens = (lensCenter.cx - objTip.cx) / dx;
         const hitY = objTip.cy + dy * tLens;
-
-        rays.push({
-          x1: objTip.cx,
-          y1: objTip.cy,
-          x2: lensCenter.cx,
-          y2: hitY,
-          dashed: false,
-          color: rayColor + rayAlpha,
-        });
-
-        // Exits parallel to axis from hit point
+        rays.push({ x1: objTip.cx, y1: objTip.cy, x2: lensCenter.cx, y2: hitY, dashed: false, color: rayColor + rayAlpha });
         const exitX = simToCanvas(rightBound, 0).cx;
-        rays.push({
-          x1: lensCenter.cx,
-          y1: hitY,
-          x2: exitX,
-          y2: hitY,
-          dashed: false,
-          color: rayColor + rayAlpha,
-        });
+        rays.push({ x1: lensCenter.cx, y1: hitY, x2: exitX, y2: hitY, dashed: false, color: rayColor + rayAlpha });
       }
     }
 
     // Virtual image dashed extensions
     if (isVirtual) {
-      // Extend rays backward as dashed lines to virtual image
-      rays.push({
-        x1: imgTip.cx,
-        y1: imgTip.cy,
-        x2: lensCenter.cx,
-        y2: lensCenter.cy,
-        dashed: true,
-        color: rayColor + rayAlpha,
-      });
+      const imgTip = simToCanvas(imagePos, imageHeight);
+      rays.push({ x1: imgTip.cx, y1: imgTip.cy, x2: lensCenter.cx, y2: lensCenter.cy, dashed: true, color: rayColor + rayAlpha });
     }
 
     totalMagnification *= magnification;
+
+    // Record intermediate image
+    const lastLens = sortedLenses[sortedLenses.length - 1];
+    images.push({
+      objectId: obj.id,
+      lensIndex: i,
+      position: imagePos,
+      height: imageHeight,
+      magnification: totalMagnification,
+      isReal: i === sortedLenses.length - 1 ? imagePos > lastLens.position : imagePos > lens.position,
+      isUpright: imageHeight > 0 === obj.height > 0,
+    });
+
     currentObjPos = imagePos;
     currentObjHeight = imageHeight;
   }
 
-  const finalImagePos = currentObjPos;
-  const finalImageHeight = currentObjHeight;
-  const lastLens = sortedLenses[sortedLenses.length - 1];
-  const isReal = finalImagePos > lastLens.position;
-
-  const image: ImageInfo = {
-    objectId: obj.id,
-    position: finalImagePos,
-    height: finalImageHeight,
-    magnification: totalMagnification,
-    isReal,
-    isUpright: finalImageHeight > 0 === obj.height > 0,
-  };
-
-  return { rays, image };
+  return { rays, images };
 }
 
 /**
@@ -279,7 +278,7 @@ export function traceRays(
  */
 export function getDefaultRadii(type: Lens["type"], f: number): { r1: number; r2: number } {
   const absF = Math.abs(f);
-  const R = absF; // simplified: equal radii for symmetric lenses
+  const R = absF;
   switch (type) {
     case "biconvex":
       return { r1: R, r2: -R };
@@ -301,10 +300,10 @@ export function getDefaultFocalLength(type: Lens["type"]): number {
   switch (type) {
     case "biconvex":
     case "plano-convex":
-      return 100; // converging, positive
+      return 100;
     case "biconcave":
     case "plano-concave":
-      return -100; // diverging, negative
+      return -100;
   }
 }
 
