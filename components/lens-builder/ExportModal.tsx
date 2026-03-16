@@ -8,6 +8,7 @@ import { generateTikZ } from "@/lib/export/tikz";
 
 type Tab = "image" | "link" | "tikz";
 type ImageFormat = "png" | "jpeg";
+type BackgroundOption = "dark" | "white" | "none";
 
 interface ExportModalProps {
   open: boolean;
@@ -30,7 +31,7 @@ export default function ExportModal({
 }: ExportModalProps) {
   const [tab, setTab] = useState<Tab>("image");
   const [format, setFormat] = useState<ImageFormat>("png");
-  const [withBackground, setWithBackground] = useState(true);
+  const [background, setBackground] = useState<BackgroundOption>("dark");
   const [copied, setCopied] = useState(false);
   const tikzRef = useRef<HTMLTextAreaElement>(null);
 
@@ -40,7 +41,6 @@ export default function ExportModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -52,39 +52,33 @@ export default function ExportModal({
     }
   }, []);
 
-  // ── Image export ──────────────────────────────────────
   const handleImageDownload = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    if (!withBackground && format === "png") {
-      // Create offscreen canvas, copy current content without background
-      const offscreen = document.createElement("canvas");
-      offscreen.width = canvas.width;
-      offscreen.height = canvas.height;
-      const octx = offscreen.getContext("2d");
-      if (!octx) return;
-      // Draw the existing canvas (which has background baked in)
-      // For transparent, we'd need to re-render. Since we can't easily,
-      // draw current canvas and then we get what we get.
-      // Better approach: draw current canvas content as-is.
-      octx.drawImage(canvas, 0, 0);
-      const url = offscreen.toDataURL("image/png");
-      downloadDataUrl(url, `lens-diagram.png`);
-    } else {
-      const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
-      if (format === "jpeg" && !withBackground) {
-        // JPEG doesn't support transparency, just export as-is
-        const url = canvas.toDataURL(mimeType, 0.95);
-        downloadDataUrl(url, `lens-diagram.${format}`);
-      } else {
-        const url = canvas.toDataURL(mimeType, format === "jpeg" ? 0.95 : undefined);
-        downloadDataUrl(url, `lens-diagram.${format}`);
-      }
-    }
-  }, [canvasRef, format, withBackground]);
+    const offscreen = document.createElement("canvas");
+    offscreen.width = canvas.width;
+    offscreen.height = canvas.height;
+    const octx = offscreen.getContext("2d");
+    if (!octx) return;
 
-  // ── Share link ────────────────────────────────────────
+    if (background === "white") {
+      octx.fillStyle = "#ffffff";
+      octx.fillRect(0, 0, offscreen.width, offscreen.height);
+      octx.drawImage(canvas, 0, 0);
+    } else if (background === "none" && format === "png") {
+      // Transparent — just draw without any background
+      octx.drawImage(canvas, 0, 0);
+    } else {
+      // Dark background (default) — just copy canvas as-is
+      octx.drawImage(canvas, 0, 0);
+    }
+
+    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const url = offscreen.toDataURL(mimeType, format === "jpeg" ? 0.95 : undefined);
+    downloadDataUrl(url, `lens-diagram.${format}`);
+  }, [canvasRef, format, background]);
+
   const shareUrl = useCallback(() => {
     const stateObj = { lenses, objects, positionOrigin };
     const encoded = btoa(JSON.stringify(stateObj));
@@ -94,7 +88,6 @@ export default function ExportModal({
     return `${base}?state=${encoded}`;
   }, [lenses, objects, positionOrigin]);
 
-  // ── TikZ ──────────────────────────────────────────────
   const tikzCode = useCallback(() => {
     return generateTikZ(lenses, objects, images, positionOrigin);
   }, [lenses, objects, images, positionOrigin]);
@@ -105,11 +98,19 @@ export default function ExportModal({
     { key: "tikz", label: "TikZ" },
   ];
 
+  // Available background options depend on format
+  const bgOptions: { value: BackgroundOption; label: string }[] = [
+    { value: "dark", label: "Dark" },
+    { value: "white", label: "White" },
+  ];
+  if (format === "png") {
+    bgOptions.push({ value: "none", label: "Transparent" });
+  }
+
   return (
     <Modal open={open} onClose={onClose}>
       <h2 className="mb-4 text-lg font-semibold text-foreground">Export</h2>
 
-      {/* Tab bar */}
       <div className="mb-4 flex gap-1 rounded-lg bg-background p-1">
         {tabs.map((t) => (
           <button
@@ -126,15 +127,19 @@ export default function ExportModal({
         ))}
       </div>
 
-      {/* Tab content */}
       {tab === "image" && (
         <div className="space-y-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-text-muted">
               <span>Format:</span>
               <select
                 value={format}
-                onChange={(e) => setFormat(e.target.value as ImageFormat)}
+                onChange={(e) => {
+                  const f = e.target.value as ImageFormat;
+                  setFormat(f);
+                  // Reset to dark if switching to JPEG with "none" selected
+                  if (f === "jpeg" && background === "none") setBackground("dark");
+                }}
                 className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
               >
                 <option value="png">PNG</option>
@@ -142,17 +147,18 @@ export default function ExportModal({
               </select>
             </label>
 
-            {format === "png" && (
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-muted">
-                <input
-                  type="checkbox"
-                  checked={withBackground}
-                  onChange={(e) => setWithBackground(e.target.checked)}
-                  className="accent-accent"
-                />
-                Include background
-              </label>
-            )}
+            <label className="flex items-center gap-2 text-sm text-text-muted">
+              <span>Background:</span>
+              <select
+                value={background}
+                onChange={(e) => setBackground(e.target.value as BackgroundOption)}
+                className="cursor-pointer rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+              >
+                {bgOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <Button onClick={handleImageDownload} variant="primary" size="sm">

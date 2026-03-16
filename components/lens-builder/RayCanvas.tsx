@@ -46,6 +46,7 @@ export default function RayCanvas({
     id: string;
     offsetX: number;
   } | null>(null);
+  const prevImagesRef = useRef<string>("");
 
   const simToCanvas = useCallback(
     (canvas: HTMLCanvasElement, sx: number, sy: number) => {
@@ -269,7 +270,12 @@ export default function RayCanvas({
       ctx.fillText(`I${toSubscript(idx + 1)}`, tip.cx, tip.cy - 12);
     }
 
-    setImages(allImages);
+    // Only update images if they actually changed to avoid infinite re-render loop
+    const imagesKey = JSON.stringify(allImages.map(i => [i.objectId, i.lensIndex, i.position.toFixed(2), i.height.toFixed(2)]));
+    if (imagesKey !== prevImagesRef.current) {
+      prevImagesRef.current = imagesKey;
+      setImages(allImages);
+    }
   }, [lenses, objects, selectedLensId, selectedObjectId, simToCanvas, setImages]);
 
   useEffect(() => {

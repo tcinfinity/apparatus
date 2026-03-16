@@ -86,31 +86,31 @@ function drawBeakers(
   time: number,
   scale: number
 ) {
-  const bw = 32 * scale;
-  const bh = 85 * scale;
-  const gap = 40 * scale;
-  const taper = 5 * scale;
-  const lipH = 5 * scale;
-  const spoutW = 6 * scale;
+  const bw = 30 * scale;
+  const bh = 75 * scale;
+  const gap = 35 * scale;
+  const taper = 4 * scale;
+  const lipH = 4 * scale;
+  const spoutW = 5 * scale;
 
-  // Cycle: 0→1 pour left→right, 1→1.4 pause, 1.4→2.4 pour right→left, 2.4→2.8 pause
-  const totalCycle = 2.8;
-  const cycle = (time * 0.3) % totalCycle;
+  // Cycle: 0→1 pour L→R, 1→1.5 pause, 1.5→2.5 pour R→L, 2.5→3 pause
+  const totalCycle = 3.0;
+  const cycle = (time * 0.25) % totalCycle;
   let pouringRight: boolean;
-  let t: number; // 0→1 animation progress
+  let t: number;
   let isPaused: boolean;
 
   if (cycle < 1) {
     pouringRight = true;
     t = cycle;
     isPaused = false;
-  } else if (cycle < 1.4) {
+  } else if (cycle < 1.5) {
     pouringRight = true;
     t = 1;
     isPaused = true;
-  } else if (cycle < 2.4) {
+  } else if (cycle < 2.5) {
     pouringRight = false;
-    t = cycle - 1.4;
+    t = cycle - 1.5;
     isPaused = false;
   } else {
     pouringRight = false;
@@ -118,9 +118,8 @@ function drawBeakers(
     isPaused = true;
   }
 
-  // Smooth easing for tilt and lift
   const tiltProgress = isPaused ? 0 : Math.sin(t * Math.PI);
-  const liftAmount = 35 * scale;
+  const liftAmount = 30 * scale;
 
   const leftCX = cx - gap - bw / 2;
   const rightCX = cx + gap + bw / 2;
@@ -134,14 +133,25 @@ function drawBeakers(
     spoutSide: "left" | "right"
   ) {
     ctx.save();
+    // Pivot at the bottom center of the beaker for natural tilting
     ctx.translate(bx, baseY - yOffset);
     ctx.rotate(tiltAngle);
 
     const topY = -bh;
     const botY = 0;
 
-    // Beaker body — glass outline
-    ctx.strokeStyle = "rgba(124,58,237,0.45)";
+    // Glass body — subtle fill for glassy look
+    ctx.fillStyle = "rgba(124,58,237,0.03)";
+    ctx.beginPath();
+    ctx.moveTo(-bw / 2 - taper, topY);
+    ctx.lineTo(-bw / 2, botY);
+    ctx.lineTo(bw / 2, botY);
+    ctx.lineTo(bw / 2 + taper, topY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glass outline
+    ctx.strokeStyle = "rgba(124,58,237,0.4)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(-bw / 2 - taper, topY);
@@ -150,42 +160,44 @@ function drawBeakers(
     ctx.lineTo(bw / 2 + taper, topY);
     ctx.stroke();
 
-    // Spout lip — only on the side facing the other beaker
+    // Spout — small pouring lip on the side facing the other beaker
     if (spoutSide === "right") {
       ctx.beginPath();
       ctx.moveTo(bw / 2 + taper, topY);
-      ctx.lineTo(bw / 2 + taper + spoutW, topY - lipH);
+      ctx.quadraticCurveTo(bw / 2 + taper + spoutW * 0.5, topY - lipH * 0.5, bw / 2 + taper + spoutW, topY - lipH);
       ctx.stroke();
     } else {
       ctx.beginPath();
       ctx.moveTo(-bw / 2 - taper, topY);
-      ctx.lineTo(-bw / 2 - taper - spoutW, topY - lipH);
+      ctx.quadraticCurveTo(-bw / 2 - taper - spoutW * 0.5, topY - lipH * 0.5, -bw / 2 - taper - spoutW, topY - lipH);
       ctx.stroke();
     }
 
-    // Glass highlight — inner left edge reflection
-    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    // Glass reflection — vertical highlight near left wall
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-bw / 2 - taper + 3, topY + 5);
-    ctx.lineTo(-bw / 2 + 3, botY - 3);
+    ctx.moveTo(-bw / 2 - taper + 3, topY + 8);
+    ctx.lineTo(-bw / 2 + 3, botY - 4);
     ctx.stroke();
 
-    // Glass highlight arc near top
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    // Glass reflection — small horizontal shine near top
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
-    ctx.arc(0, topY + bh * 0.25, bw * 0.25, -Math.PI * 0.8, -Math.PI * 0.2);
+    ctx.moveTo(-bw / 4, topY + bh * 0.12);
+    ctx.lineTo(bw / 6, topY + bh * 0.1);
     ctx.stroke();
 
     // Graduation marks
-    ctx.strokeStyle = "rgba(124,58,237,0.18)";
+    ctx.strokeStyle = "rgba(124,58,237,0.15)";
     ctx.lineWidth = 0.5;
-    for (let i = 1; i <= 5; i++) {
-      const my = botY - (bh * i) / 6;
-      const mTaper = taper * (1 - i / 6);
+    for (let i = 1; i <= 4; i++) {
+      const my = botY - (bh * i) / 5;
+      const mt = taper * (1 - i / 5);
       ctx.beginPath();
-      ctx.moveTo(-bw / 2 - mTaper, my);
-      ctx.lineTo(-bw / 2 - mTaper + 6 * scale, my);
+      ctx.moveTo(-bw / 2 - mt, my);
+      ctx.lineTo(-bw / 2 - mt + 5 * scale, my);
       ctx.stroke();
     }
 
@@ -194,10 +206,11 @@ function drawBeakers(
       const liqH = fillLevel * bh * 0.85;
       const liqTop = botY - liqH;
       const liqTaper = taper * (liqH / bh);
-      ctx.fillStyle = "rgba(96,165,250,0.3)";
+      ctx.fillStyle = "rgba(96,165,250,0.25)";
       ctx.beginPath();
       ctx.moveTo(-bw / 2 - liqTaper, liqTop);
-      ctx.lineTo(bw / 2 + liqTaper, liqTop);
+      // Meniscus
+      ctx.quadraticCurveTo(0, liqTop + 2 * scale, bw / 2 + liqTaper, liqTop);
       ctx.lineTo(bw / 2, botY);
       ctx.lineTo(-bw / 2, botY);
       ctx.closePath();
@@ -207,23 +220,26 @@ function drawBeakers(
     ctx.restore();
   }
 
-  // Compute fill levels, tilts, and lifts
   let leftFill: number, rightFill: number;
   let leftTilt: number, rightTilt: number;
   let leftLift: number, rightLift: number;
 
   if (pouringRight) {
+    // Left beaker pours right: tilt CLOCKWISE (positive angle in canvas coords)
+    // so the right-side spout tips downward toward the right beaker
     leftFill = isPaused ? 0 : 0.7 * (1 - t);
     rightFill = isPaused ? 0.7 : 0.7 * t;
-    leftTilt = -tiltProgress * 0.5;
+    leftTilt = tiltProgress * 0.45;
     rightTilt = 0;
     leftLift = tiltProgress * liftAmount;
     rightLift = 0;
   } else {
+    // Right beaker pours left: tilt COUNTER-CLOCKWISE (negative angle)
+    // so the left-side spout tips downward toward the left beaker
     leftFill = isPaused ? 0.7 : 0.7 * t;
     rightFill = isPaused ? 0 : 0.7 * (1 - t);
     leftTilt = 0;
-    rightTilt = tiltProgress * 0.5;
+    rightTilt = -tiltProgress * 0.45;
     leftLift = 0;
     rightLift = tiltProgress * liftAmount;
   }
@@ -232,13 +248,13 @@ function drawBeakers(
   drawBeaker(rightCX, rightFill, rightTilt, rightLift, "left");
 
   // Pour arc from tilted spout
-  if (tiltProgress > 0.1) {
+  if (tiltProgress > 0.15) {
     const fromBx = pouringRight ? leftCX : rightCX;
     const toBx = pouringRight ? rightCX : leftCX;
     const tiltAngle = pouringRight ? leftTilt : rightTilt;
     const fromLift = pouringRight ? leftLift : rightLift;
 
-    // Spout position after tilt + lift
+    // Compute spout tip position in world coords after rotation + lift
     const spoutLocalX = pouringRight
       ? bw / 2 + taper + spoutW
       : -(bw / 2 + taper + spoutW);
@@ -248,16 +264,17 @@ function drawBeakers(
     const fromX = fromBx + spoutLocalX * cosA - spoutLocalY * sinA;
     const fromY = (baseY - fromLift) + spoutLocalX * sinA + spoutLocalY * cosA;
 
+    // Pour into the other beaker's opening
     const toX = toBx;
-    const toY = baseY - bh + 10 * scale;
+    const toY = baseY - bh + 8 * scale;
 
-    ctx.strokeStyle = `rgba(96,165,250,${0.4 * tiltProgress})`;
-    ctx.lineWidth = 2.5 * scale * tiltProgress;
+    ctx.strokeStyle = `rgba(96,165,250,${0.35 * tiltProgress})`;
+    ctx.lineWidth = 2 * scale * tiltProgress;
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
     ctx.quadraticCurveTo(
       (fromX + toX) / 2,
-      Math.min(fromY, toY) - 20 * scale * tiltProgress,
+      Math.min(fromY, toY) - 15 * scale * tiltProgress,
       toX,
       toY
     );
@@ -468,7 +485,7 @@ export default function HeroCanvas() {
       ctx!.clearRect(0, 0, w, h);
 
       drawAtom(ctx!, w * 0.18, h * 0.45, t, scale);
-      drawBeakers(ctx!, w * 0.5, h * 0.62, t, scale);
+      drawBeakers(ctx!, w * 0.5, h * 0.5, t, scale);
       drawTitration(ctx!, w * 0.82, h * 0.45, t, scale);
 
       animRef.current = requestAnimationFrame(draw);

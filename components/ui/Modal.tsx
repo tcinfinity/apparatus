@@ -58,7 +58,7 @@ export default function Modal({ open, onClose, children, className }: ModalProps
           >
             <button
               onClick={onClose}
-              className="absolute right-4 top-4 rounded-md p-1 text-text-muted transition-colors hover:text-foreground"
+              className="absolute right-4 top-4 cursor-pointer rounded-md p-1 text-text-muted transition-colors hover:text-foreground"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path
