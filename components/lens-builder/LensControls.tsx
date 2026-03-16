@@ -12,6 +12,7 @@ interface LensControlsProps {
   selectedLensId: string | null;
   selectedObjectId: string | null;
   images: ImageInfo[];
+  positionOrigin: number;
   onAddLens: (lens: Lens) => void;
   onAddObject: (obj: LensObject) => void;
   onUpdateLens: (id: string, updates: Partial<Lens>) => void;
@@ -19,6 +20,7 @@ interface LensControlsProps {
   onRemoveLens: (id: string) => void;
   onRemoveObject: (id: string) => void;
   onSetOrigin: (objectId: string) => void;
+  onExport: () => void;
 }
 
 const OBJECT_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#a78bfa", "#fb923c"];
@@ -46,7 +48,6 @@ const LENS_TYPES: { type: LensType; label: string }[] = [
   { type: "plano-concave", label: "Plano-concave" },
 ];
 
-// Subscript digits for labels
 const SUBSCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
 function toSubscript(n: number): string {
   return String(n).split("").map(d => SUBSCRIPT_DIGITS[parseInt(d)]).join("");
@@ -58,6 +59,7 @@ export default function LensControls({
   selectedLensId,
   selectedObjectId,
   images,
+  positionOrigin,
   onAddLens,
   onAddObject,
   onUpdateLens,
@@ -65,6 +67,7 @@ export default function LensControls({
   onRemoveLens,
   onRemoveObject,
   onSetOrigin,
+  onExport,
 }: LensControlsProps) {
   const handleAddLens = useCallback(
     (type: LensType) => {
@@ -102,14 +105,16 @@ export default function LensControls({
   const selectedLens = lenses.find((l) => l.id === selectedLensId);
   const selectedObject = objects.find((o) => o.id === selectedObjectId);
 
-  // Sorted lens index for display
   const sortedLenses = [...lenses].sort((a, b) => a.position - b.position);
   const lensNumMap = new Map<string, number>();
   sortedLenses.forEach((l, i) => lensNumMap.set(l.id, i + 1));
 
+  // Display position relative to origin
+  const dp = (pos: number) => Math.round(pos - positionOrigin);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Add buttons */}
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={handleAddObject} variant="secondary" size="sm">
           + Add Object
@@ -126,6 +131,10 @@ export default function LensControls({
             {lt.label}
           </Button>
         ))}
+        <div className="h-6 w-px bg-border" />
+        <Button onClick={onExport} variant="secondary" size="sm">
+          Export
+        </Button>
       </div>
 
       {/* Selected lens details */}
@@ -141,7 +150,7 @@ export default function LensControls({
             </h3>
             <button
               onClick={() => onRemoveLens(selectedLens.id)}
-              className="cursor-pointer text-xs text-text-muted hover:text-red-400"
+              className="cursor-pointer text-xs text-red-400/60 hover:text-red-500"
             >
               Remove
             </button>
@@ -149,8 +158,8 @@ export default function LensControls({
           <div className="grid grid-cols-2 gap-3 text-xs">
             <EditableValue
               label="Position"
-              value={selectedLens.position}
-              onChange={(v) => onUpdateLens(selectedLens.id, { position: v })}
+              value={dp(selectedLens.position)}
+              onChange={(v) => onUpdateLens(selectedLens.id, { position: v + positionOrigin })}
             />
             <LabeledValue
               label="f (focal length)"
@@ -274,6 +283,41 @@ export default function LensControls({
               </>
             )}
           </div>
+
+          {/* u and v distances for objects through this lens */}
+          {objects.length > 0 && (
+            <div className="mt-3 border-t border-border pt-3">
+              <h4 className="mb-2 text-xs font-semibold text-text-muted">
+                Object &amp; Image Distances
+              </h4>
+              <div className="space-y-1.5">
+                {objects.map((obj) => {
+                  const lensIdx = sortedLenses.findIndex(l => l.id === selectedLens.id);
+                  const img = images.find(
+                    (im) => im.objectId === obj.id && im.lensIndex === lensIdx
+                  );
+                  const u = obj.position - selectedLens.position;
+                  const v = img ? img.position - selectedLens.position : null;
+                  return (
+                    <div key={obj.id} className="flex items-center gap-3 text-xs">
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: obj.color }}
+                      />
+                      <span className="text-text-muted">
+                        u = {u.toFixed(1)}
+                      </span>
+                      {v !== null && (
+                        <span className="text-text-muted">
+                          v = {v.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -297,7 +341,7 @@ export default function LensControls({
               </button>
               <button
                 onClick={() => onRemoveObject(selectedObject.id)}
-                className="cursor-pointer text-xs text-text-muted hover:text-red-400"
+                className="cursor-pointer text-xs text-red-400/60 hover:text-red-500"
               >
                 Remove
               </button>
@@ -306,8 +350,8 @@ export default function LensControls({
           <div className="grid grid-cols-2 gap-3 text-xs">
             <EditableValue
               label="Position"
-              value={selectedObject.position}
-              onChange={(v) => onUpdateObject(selectedObject.id, { position: v })}
+              value={dp(selectedObject.position)}
+              onChange={(v) => onUpdateObject(selectedObject.id, { position: v + positionOrigin })}
             />
             <EditableValue
               label="Height"
@@ -360,7 +404,7 @@ export default function LensControls({
                     style={{ backgroundColor: srcObj.color }}
                   />
                   <span className="text-text-muted">
-                    v = {img.position.toFixed(1)}
+                    position = {dp(img.position).toFixed(1)}
                   </span>
                   <span className="text-text-muted">
                     m = {img.magnification.toFixed(2)}

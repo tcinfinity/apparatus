@@ -1,10 +1,11 @@
 "use client";
 
-import { useReducer, useState, useCallback } from "react";
+import { useReducer, useState, useCallback, useEffect, useRef } from "react";
 import SimulationNav from "@/components/layout/SimulationNav";
 import RayCanvas from "@/components/lens-builder/RayCanvas";
 import LensControls from "@/components/lens-builder/LensControls";
 import HelpModal from "@/components/lens-builder/HelpModal";
+import ExportModal from "@/components/lens-builder/ExportModal";
 import type {
   Lens,
   LensObject,
@@ -59,19 +60,15 @@ function reducer(
     case "SET_ORIGIN": {
       const obj = state.objects.find((o) => o.id === action.objectId);
       if (!obj) return state;
-      const offset = obj.position;
+      return { ...state, positionOrigin: obj.position };
+    }
+    case "LOAD_STATE":
       return {
         ...state,
-        objects: state.objects.map((o) => ({
-          ...o,
-          position: o.position - offset,
-        })),
-        lenses: state.lenses.map((l) => ({
-          ...l,
-          position: l.position - offset,
-        })),
+        lenses: action.state.lenses,
+        objects: action.state.objects,
+        positionOrigin: action.state.positionOrigin,
       };
-    }
     default:
       return state;
   }
@@ -83,12 +80,38 @@ const initialState: LensBuilderState = {
   selectedLensId: null,
   selectedObjectId: null,
   dragTarget: null,
+  positionOrigin: 0,
 };
 
 export default function LensBuilderPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [images, setImages] = useState<ImageInfo[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Load state from URL params on mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const stateParam = params.get("state");
+      if (stateParam) {
+        const decoded = JSON.parse(atob(stateParam));
+        if (decoded.lenses && decoded.objects) {
+          dispatch({
+            type: "LOAD_STATE",
+            state: {
+              lenses: decoded.lenses,
+              objects: decoded.objects,
+              positionOrigin: decoded.positionOrigin ?? 0,
+            },
+          });
+        }
+      }
+    } catch {
+      // ignore invalid state params
+    }
+  }, []);
 
   const handleDragLens = useCallback(
     (id: string, newPosition: number) => {
@@ -128,6 +151,7 @@ export default function LensBuilderPage() {
           onSelectObject={(id) => dispatch({ type: "SELECT_OBJECT", id })}
           images={images}
           setImages={setImages}
+          onCanvasReady={(el) => { canvasRef.current = el; }}
         />
         <LensControls
           lenses={state.lenses}
@@ -135,6 +159,7 @@ export default function LensBuilderPage() {
           selectedLensId={state.selectedLensId}
           selectedObjectId={state.selectedObjectId}
           images={images}
+          positionOrigin={state.positionOrigin}
           onAddLens={(lens: Lens) => dispatch({ type: "ADD_LENS", lens })}
           onAddObject={(obj: LensObject) =>
             dispatch({ type: "ADD_OBJECT", object: obj })
@@ -152,10 +177,20 @@ export default function LensBuilderPage() {
           onSetOrigin={(objectId: string) =>
             dispatch({ type: "SET_ORIGIN", objectId })
           }
+          onExport={() => setExportOpen(true)}
         />
       </main>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        lenses={state.lenses}
+        objects={state.objects}
+        images={images}
+        positionOrigin={state.positionOrigin}
+        canvasRef={canvasRef}
+      />
     </div>
   );
 }

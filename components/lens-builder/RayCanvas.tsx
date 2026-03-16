@@ -15,6 +15,7 @@ interface RayCanvasProps {
   onSelectObject: (id: string | null) => void;
   images: ImageInfo[];
   setImages: (images: ImageInfo[]) => void;
+  onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
 const SIM_RANGE_X = 500;
@@ -37,6 +38,7 @@ export default function RayCanvas({
   onSelectObject,
   images: _images,
   setImages,
+  onCanvasReady,
 }: RayCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{
@@ -272,9 +274,10 @@ export default function RayCanvas({
 
   useEffect(() => {
     draw();
+    if (onCanvasReady && canvasRef.current) onCanvasReady(canvasRef.current);
     window.addEventListener("resize", draw);
     return () => window.removeEventListener("resize", draw);
-  }, [draw]);
+  }, [draw, onCanvasReady]);
 
   // Mouse interactions
   const handleMouseDown = useCallback(

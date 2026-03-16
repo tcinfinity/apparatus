@@ -22,14 +22,14 @@ function drawAtom(
 
   // Nucleus cluster: protons (purple) and neutrons (blue-gray)
   const nucleons = [
-    { dx: 0, dy: 0, r: 3.5, color: "rgba(167,139,250,0.9)" },       // proton
-    { dx: -3.5, dy: -2.5, r: 3.2, color: "rgba(148,163,184,0.7)" }, // neutron
-    { dx: 3.2, dy: -2, r: 3.3, color: "rgba(167,139,250,0.85)" },   // proton
-    { dx: -2, dy: 3, r: 3.0, color: "rgba(148,163,184,0.65)" },     // neutron
-    { dx: 2.5, dy: 3.2, r: 3.1, color: "rgba(167,139,250,0.8)" },   // proton
-    { dx: -4, dy: 0.5, r: 2.8, color: "rgba(167,139,250,0.75)" },   // proton
-    { dx: 4.2, dy: 0.8, r: 2.9, color: "rgba(148,163,184,0.6)" },   // neutron
-    { dx: 0.5, dy: -4, r: 3.0, color: "rgba(148,163,184,0.65)" },   // neutron
+    { dx: 0, dy: 0, r: 3.5, color: "rgba(167,139,250,0.9)" },
+    { dx: -3.5, dy: -2.5, r: 3.2, color: "rgba(148,163,184,0.7)" },
+    { dx: 3.2, dy: -2, r: 3.3, color: "rgba(167,139,250,0.85)" },
+    { dx: -2, dy: 3, r: 3.0, color: "rgba(148,163,184,0.65)" },
+    { dx: 2.5, dy: 3.2, r: 3.1, color: "rgba(167,139,250,0.8)" },
+    { dx: -4, dy: 0.5, r: 2.8, color: "rgba(167,139,250,0.75)" },
+    { dx: 4.2, dy: 0.8, r: 2.9, color: "rgba(148,163,184,0.6)" },
+    { dx: 0.5, dy: -4, r: 3.0, color: "rgba(148,163,184,0.65)" },
   ];
 
   for (const n of nucleons) {
@@ -51,14 +51,12 @@ function drawAtom(
     ctx.translate(cx, cy);
     ctx.rotate(orbit.tilt);
 
-    // Orbit path
-    ctx.strokeStyle = "rgba(124,58,237,0.15)";
+    ctx.strokeStyle = "rgba(124,58,237,0.25)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(0, 0, orbit.rx, orbit.ry, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Electron
     const angle = time * orbit.speed;
     const ex = Math.cos(angle) * orbit.rx;
     const ey = Math.sin(angle) * orbit.ry;
@@ -88,64 +86,99 @@ function drawBeakers(
   time: number,
   scale: number
 ) {
-  const bw = 32 * scale; // narrower beaker
-  const bh = 85 * scale; // taller beaker
+  const bw = 32 * scale;
+  const bh = 85 * scale;
   const gap = 40 * scale;
   const taper = 5 * scale;
   const lipH = 5 * scale;
   const spoutW = 6 * scale;
 
-  // Cycle: 0-1 pour left→right, 1-2 pour right→left
-  const cycle = (time * 0.25) % 2;
-  const pouringRight = cycle < 1;
-  const t = pouringRight ? cycle : cycle - 1;
+  // Cycle: 0→1 pour left→right, 1→1.4 pause, 1.4→2.4 pour right→left, 2.4→2.8 pause
+  const totalCycle = 2.8;
+  const cycle = (time * 0.3) % totalCycle;
+  let pouringRight: boolean;
+  let t: number; // 0→1 animation progress
+  let isPaused: boolean;
 
-  // Smooth easing for tilt
-  const tiltProgress = Math.sin(t * Math.PI); // 0→1→0
+  if (cycle < 1) {
+    pouringRight = true;
+    t = cycle;
+    isPaused = false;
+  } else if (cycle < 1.4) {
+    pouringRight = true;
+    t = 1;
+    isPaused = true;
+  } else if (cycle < 2.4) {
+    pouringRight = false;
+    t = cycle - 1.4;
+    isPaused = false;
+  } else {
+    pouringRight = false;
+    t = 1;
+    isPaused = true;
+  }
+
+  // Smooth easing for tilt and lift
+  const tiltProgress = isPaused ? 0 : Math.sin(t * Math.PI);
+  const liftAmount = 35 * scale;
 
   const leftCX = cx - gap - bw / 2;
   const rightCX = cx + gap + bw / 2;
   const baseY = cy + bh / 2;
 
-  // Draw a single beaker (centered at bx, baseY is bottom)
   function drawBeaker(
     bx: number,
     fillLevel: number,
-    tiltAngle: number
+    tiltAngle: number,
+    yOffset: number,
+    spoutSide: "left" | "right"
   ) {
     ctx.save();
-    ctx.translate(bx, baseY);
+    ctx.translate(bx, baseY - yOffset);
     ctx.rotate(tiltAngle);
 
     const topY = -bh;
     const botY = 0;
 
-    // Beaker body — slight taper, taller
-    ctx.strokeStyle = "rgba(124,58,237,0.3)";
+    // Beaker body — glass outline
+    ctx.strokeStyle = "rgba(124,58,237,0.45)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    // Left wall
     ctx.moveTo(-bw / 2 - taper, topY);
     ctx.lineTo(-bw / 2, botY);
-    // Bottom
     ctx.lineTo(bw / 2, botY);
-    // Right wall
     ctx.lineTo(bw / 2 + taper, topY);
     ctx.stroke();
 
-    // Spout lip (left side)
+    // Spout lip — only on the side facing the other beaker
+    if (spoutSide === "right") {
+      ctx.beginPath();
+      ctx.moveTo(bw / 2 + taper, topY);
+      ctx.lineTo(bw / 2 + taper + spoutW, topY - lipH);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-bw / 2 - taper, topY);
+      ctx.lineTo(-bw / 2 - taper - spoutW, topY - lipH);
+      ctx.stroke();
+    }
+
+    // Glass highlight — inner left edge reflection
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-bw / 2 - taper, topY);
-    ctx.lineTo(-bw / 2 - taper - spoutW, topY - lipH);
+    ctx.moveTo(-bw / 2 - taper + 3, topY + 5);
+    ctx.lineTo(-bw / 2 + 3, botY - 3);
     ctx.stroke();
-    // Spout lip (right side)
+
+    // Glass highlight arc near top
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
     ctx.beginPath();
-    ctx.moveTo(bw / 2 + taper, topY);
-    ctx.lineTo(bw / 2 + taper + spoutW, topY - lipH);
+    ctx.arc(0, topY + bh * 0.25, bw * 0.25, -Math.PI * 0.8, -Math.PI * 0.2);
     ctx.stroke();
 
     // Graduation marks
-    ctx.strokeStyle = "rgba(124,58,237,0.12)";
+    ctx.strokeStyle = "rgba(124,58,237,0.18)";
     ctx.lineWidth = 0.5;
     for (let i = 1; i <= 5; i++) {
       const my = botY - (bh * i) / 6;
@@ -161,7 +194,7 @@ function drawBeakers(
       const liqH = fillLevel * bh * 0.85;
       const liqTop = botY - liqH;
       const liqTaper = taper * (liqH / bh);
-      ctx.fillStyle = "rgba(96,165,250,0.2)";
+      ctx.fillStyle = "rgba(96,165,250,0.3)";
       ctx.beginPath();
       ctx.moveTo(-bw / 2 - liqTaper, liqTop);
       ctx.lineTo(bw / 2 + liqTaper, liqTop);
@@ -174,31 +207,38 @@ function drawBeakers(
     ctx.restore();
   }
 
-  // Compute fill levels and tilts
+  // Compute fill levels, tilts, and lifts
   let leftFill: number, rightFill: number;
   let leftTilt: number, rightTilt: number;
+  let leftLift: number, rightLift: number;
+
   if (pouringRight) {
-    leftFill = 0.7 * (1 - t);
-    rightFill = 0.7 * t;
-    leftTilt = -tiltProgress * 0.5; // tilt left beaker to pour right
+    leftFill = isPaused ? 0 : 0.7 * (1 - t);
+    rightFill = isPaused ? 0.7 : 0.7 * t;
+    leftTilt = -tiltProgress * 0.5;
     rightTilt = 0;
+    leftLift = tiltProgress * liftAmount;
+    rightLift = 0;
   } else {
-    leftFill = 0.7 * t;
-    rightFill = 0.7 * (1 - t);
+    leftFill = isPaused ? 0.7 : 0.7 * t;
+    rightFill = isPaused ? 0 : 0.7 * (1 - t);
     leftTilt = 0;
-    rightTilt = tiltProgress * 0.5; // tilt right beaker to pour left
+    rightTilt = tiltProgress * 0.5;
+    leftLift = 0;
+    rightLift = tiltProgress * liftAmount;
   }
 
-  drawBeaker(leftCX, leftFill, leftTilt);
-  drawBeaker(rightCX, rightFill, rightTilt);
+  drawBeaker(leftCX, leftFill, leftTilt, leftLift, "right");
+  drawBeaker(rightCX, rightFill, rightTilt, rightLift, "left");
 
   // Pour arc from tilted spout
   if (tiltProgress > 0.1) {
     const fromBx = pouringRight ? leftCX : rightCX;
     const toBx = pouringRight ? rightCX : leftCX;
     const tiltAngle = pouringRight ? leftTilt : rightTilt;
+    const fromLift = pouringRight ? leftLift : rightLift;
 
-    // Spout position after tilt
+    // Spout position after tilt + lift
     const spoutLocalX = pouringRight
       ? bw / 2 + taper + spoutW
       : -(bw / 2 + taper + spoutW);
@@ -206,12 +246,12 @@ function drawBeakers(
     const cosA = Math.cos(tiltAngle);
     const sinA = Math.sin(tiltAngle);
     const fromX = fromBx + spoutLocalX * cosA - spoutLocalY * sinA;
-    const fromY = baseY + spoutLocalX * sinA + spoutLocalY * cosA;
+    const fromY = (baseY - fromLift) + spoutLocalX * sinA + spoutLocalY * cosA;
 
     const toX = toBx;
     const toY = baseY - bh + 10 * scale;
 
-    ctx.strokeStyle = `rgba(96,165,250,${0.35 * tiltProgress})`;
+    ctx.strokeStyle = `rgba(96,165,250,${0.4 * tiltProgress})`;
     ctx.lineWidth = 2.5 * scale * tiltProgress;
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
@@ -239,7 +279,7 @@ function drawTitration(
   const buretteW = 8 * scale;
 
   // Burette body
-  ctx.strokeStyle = "rgba(124,58,237,0.25)";
+  ctx.strokeStyle = "rgba(124,58,237,0.4)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.rect(
@@ -250,11 +290,11 @@ function drawTitration(
   );
   ctx.stroke();
 
-  // Burette liquid level (decreasing over time)
+  // Burette liquid level
   const buretteFill = 0.8 - ((time * 0.05) % 0.6);
   if (buretteFill > 0.05) {
     const buretteLiqTop = buretteBot - buretteFill * (buretteBot - buretteTop);
-    ctx.fillStyle = "rgba(96,165,250,0.15)";
+    ctx.fillStyle = "rgba(96,165,250,0.2)";
     ctx.fillRect(
       buretteX - buretteW / 2 + 1,
       buretteLiqTop,
@@ -264,7 +304,7 @@ function drawTitration(
   }
 
   // Stopcock
-  ctx.fillStyle = "rgba(124,58,237,0.2)";
+  ctx.fillStyle = "rgba(124,58,237,0.25)";
   ctx.fillRect(
     buretteX - buretteW,
     buretteBot - 4 * scale,
@@ -273,7 +313,7 @@ function drawTitration(
   );
 
   // Nozzle
-  ctx.strokeStyle = "rgba(124,58,237,0.25)";
+  ctx.strokeStyle = "rgba(124,58,237,0.4)";
   ctx.beginPath();
   ctx.moveTo(buretteX - 2 * scale, buretteBot);
   ctx.lineTo(buretteX - 2 * scale, buretteBot + 8 * scale);
@@ -281,28 +321,16 @@ function drawTitration(
   ctx.lineTo(buretteX + 2 * scale, buretteBot);
   ctx.stroke();
 
-  // Flask swirl offset
-  const swirlOffset = Math.sin(time * 2.5) * 4 * scale;
+  // Flask swirl offset (halved) + tilt
+  const swirlOffset = Math.sin(time * 2.5) * 2 * scale;
+  const swirlTilt = Math.sin(time * 2.5) * 0.04;
 
-  // Conical flask (with swirl offset)
+  // Conical flask
   const flaskCX = buretteX + swirlOffset;
   const flaskTop = cy + 20 * scale;
   const flaskBot = cy + 70 * scale;
   const flaskTopW = 12 * scale;
   const flaskBotW = 45 * scale;
-
-  ctx.strokeStyle = "rgba(124,58,237,0.25)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  // Neck
-  ctx.moveTo(flaskCX - flaskTopW / 2, flaskTop - 15 * scale);
-  ctx.lineTo(flaskCX - flaskTopW / 2, flaskTop);
-  // Body
-  ctx.lineTo(flaskCX - flaskBotW / 2, flaskBot);
-  ctx.lineTo(flaskCX + flaskBotW / 2, flaskBot);
-  ctx.lineTo(flaskCX + flaskTopW / 2, flaskTop);
-  ctx.lineTo(flaskCX + flaskTopW / 2, flaskTop - 15 * scale);
-  ctx.stroke();
 
   // Color transition: colorless → pale yellow → orange → pink
   const colorCycle = (time * 0.15) % 4;
@@ -333,19 +361,40 @@ function drawTitration(
     a = 0.25 * (1 - p) + 0.08 * p;
   }
 
-  // Flask liquid
+  // Flask liquid measurements (needed before flask drawing for drop target)
   const fillLevel = 0.55;
   const liqTop = flaskBot - fillLevel * (flaskBot - flaskTop);
   const topWidth =
     flaskTopW / 2 +
     ((flaskBotW / 2 - flaskTopW / 2) * (liqTop - flaskTop)) /
       (flaskBot - flaskTop);
+
+  // Draw flask with tilt (save/restore around the tilting flask)
+  ctx.save();
+  ctx.translate(flaskCX, flaskBot);
+  ctx.rotate(swirlTilt);
+  ctx.translate(-flaskCX, -flaskBot);
+
+  // Flask outline
+  ctx.strokeStyle = "rgba(124,58,237,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(flaskCX - flaskTopW / 2, flaskTop - 15 * scale);
+  ctx.lineTo(flaskCX - flaskTopW / 2, flaskTop);
+  ctx.lineTo(flaskCX - flaskBotW / 2, flaskBot);
+  ctx.lineTo(flaskCX + flaskBotW / 2, flaskBot);
+  ctx.lineTo(flaskCX + flaskTopW / 2, flaskTop);
+  ctx.lineTo(flaskCX + flaskTopW / 2, flaskTop - 15 * scale);
+  ctx.stroke();
+
+  // Flask liquid with concave meniscus
   ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
   ctx.beginPath();
   ctx.moveTo(flaskCX - topWidth, liqTop);
-  ctx.lineTo(flaskCX - flaskBotW / 2, flaskBot);
+  // Concave meniscus — curves downward in the center
+  ctx.quadraticCurveTo(flaskCX, liqTop + 4 * scale, flaskCX + topWidth, liqTop);
   ctx.lineTo(flaskCX + flaskBotW / 2, flaskBot);
-  ctx.lineTo(flaskCX + topWidth, liqTop);
+  ctx.lineTo(flaskCX - flaskBotW / 2, flaskBot);
   ctx.closePath();
   ctx.fill();
 
@@ -366,11 +415,13 @@ function drawTitration(
   }
   ctx.stroke();
 
-  // Droplets falling (from burette nozzle toward flask neck)
+  ctx.restore(); // end flask tilt transform
+
+  // Droplets falling (from burette nozzle down to liquid surface)
   const dropInterval = 1.2;
   const dropTime = time % dropInterval;
   const dropStartY = buretteBot + 8 * scale;
-  const dropEndY = flaskTop - 15 * scale;
+  const dropEndY = liqTop; // target is the liquid surface, not the flask neck
   const dropProgress = dropTime / dropInterval;
   const dropY =
     dropStartY + (dropEndY - dropStartY) * dropProgress * dropProgress;
@@ -378,7 +429,7 @@ function drawTitration(
   if (dropY < dropEndY) {
     // Droplet follows a slight arc toward the swirling flask
     const dropX = buretteX + swirlOffset * dropProgress * dropProgress;
-    ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(a, 0.3)})`;
+    ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(a, 0.35)})`;
     ctx.beginPath();
     ctx.ellipse(dropX, dropY, 2 * scale, 3 * scale, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -417,7 +468,7 @@ export default function HeroCanvas() {
       ctx!.clearRect(0, 0, w, h);
 
       drawAtom(ctx!, w * 0.18, h * 0.45, t, scale);
-      drawBeakers(ctx!, w * 0.5, h * 0.5, t, scale);
+      drawBeakers(ctx!, w * 0.5, h * 0.62, t, scale);
       drawTitration(ctx!, w * 0.82, h * 0.45, t, scale);
 
       animRef.current = requestAnimationFrame(draw);

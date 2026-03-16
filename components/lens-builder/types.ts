@@ -47,6 +47,7 @@ export interface LensBuilderState {
   selectedLensId: string | null;
   selectedObjectId: string | null;
   dragTarget: { type: "lens" | "object"; id: string } | null;
+  positionOrigin: number;
 }
 
 export type LensBuilderAction =
@@ -59,4 +60,5 @@ export type LensBuilderAction =
   | { type: "SELECT_LENS"; id: string | null }
   | { type: "SELECT_OBJECT"; id: string | null }
   | { type: "SET_DRAG"; target: LensBuilderState["dragTarget"] }
-  | { type: "SET_ORIGIN"; objectId: string };
+  | { type: "SET_ORIGIN"; objectId: string }
+  | { type: "LOAD_STATE"; state: Pick<LensBuilderState, "lenses" | "objects" | "positionOrigin"> };
