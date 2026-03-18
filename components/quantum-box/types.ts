@@ -8,6 +8,7 @@ export interface QuantumBoxState {
   sigma: number;    // width (fraction of L)
   k0: number;       // incident wavenumber k₁
   energy: number;   // E = ℏ²k₁²/(2m) — computed from k0
+  amplitude: number; // incident amplitude
 
   // Barrier
   barrierCenter: number;  // fraction of L
@@ -32,6 +33,7 @@ export type QuantumBoxAction =
   | { type: "SET_SIGMA"; value: number }
   | { type: "SET_K0"; value: number }
   | { type: "SET_SPEED"; value: number }
+  | { type: "SET_AMPLITUDE"; value: number }
   | { type: "TOGGLE_RUNNING" }
   | { type: "TOGGLE_SHOW"; field: "showReal" | "showImag" | "showProbability" | "showPotential" }
   | { type: "SET_BARRIER_CENTER"; value: number }
@@ -39,4 +41,5 @@ export type QuantumBoxAction =
   | { type: "SET_BARRIER_HEIGHT"; value: number }
   | { type: "TOGGLE_BARRIER" }
   | { type: "SET_MODE"; mode: WaveMode }
+  | { type: "RESET_SETTINGS" }
   | { type: "RESET" };

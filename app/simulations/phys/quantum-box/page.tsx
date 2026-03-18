@@ -1,12 +1,12 @@
 "use client";
 
-import { useReducer, useRef, useState, useCallback } from "react";
+import { useReducer, useRef, useState, useCallback, useEffect } from "react";
 import SimulationNav from "@/components/layout/SimulationNav";
 import WaveCanvas from "@/components/quantum-box/WaveCanvas";
 import QuantumControls from "@/components/quantum-box/QuantumControls";
 import HelpModal from "@/components/quantum-box/HelpModal";
 import type { QuantumBoxState, QuantumBoxAction } from "@/components/quantum-box/types";
-import { initQuantumState, totalProbability, type QuantumState } from "@/lib/physics/quantum";
+import { initQuantumState, updatePotential, totalProbability, type QuantumState } from "@/lib/physics/quantum";
 
 const N = 1024;
 const L = 10;
@@ -15,7 +15,8 @@ const initialParams: QuantumBoxState = {
   x0: 0.2,
   sigma: 0.06,
   k0: 12,
-  energy: 72, // k²/2
+  energy: 72,
+  amplitude: 1.0,
   barrierCenter: 0.5,
   barrierWidth: 0.03,
   barrierHeight: 200,
@@ -39,6 +40,8 @@ function reducer(state: QuantumBoxState, action: QuantumBoxAction): QuantumBoxSt
       return { ...state, k0: action.value, energy: (action.value ** 2) / 2 };
     case "SET_SPEED":
       return { ...state, speed: action.value };
+    case "SET_AMPLITUDE":
+      return { ...state, amplitude: action.value };
     case "TOGGLE_RUNNING":
       return { ...state, running: !state.running };
     case "TOGGLE_SHOW":
@@ -54,6 +57,9 @@ function reducer(state: QuantumBoxState, action: QuantumBoxAction): QuantumBoxSt
     case "SET_MODE":
       return { ...state, mode: action.mode };
     case "RESET":
+      // Reset animation only: re-init wave function with current params
+      return state;
+    case "RESET_SETTINGS":
       return { ...initialParams };
     default:
       return state;
@@ -64,7 +70,7 @@ function buildQuantumState(params: QuantumBoxState): QuantumState {
   const barrier = params.showBarrier
     ? { center: params.barrierCenter, width: params.barrierWidth, height: params.barrierHeight }
     : null;
-  return initQuantumState(N, L, params.x0, params.sigma, params.k0, barrier, 1e6, params.mode);
+  return initQuantumState(N, L, params.x0, params.sigma, params.k0, barrier, 1e6, params.mode, params.amplitude);
 }
 
 export default function QuantumBoxPage() {
@@ -77,16 +83,27 @@ export default function QuantumBoxPage() {
     qStateRef.current = buildQuantumState(params);
   }
 
-  const handleReset = useCallback(() => {
-    dispatch({ type: "RESET" });
-    qStateRef.current = buildQuantumState(initialParams);
-    setProb(1);
-  }, []);
+  // Live update potential when barrier parameters change
+  useEffect(() => {
+    if (!qStateRef.current) return;
+    const barrier = params.showBarrier
+      ? { center: params.barrierCenter, width: params.barrierWidth, height: params.barrierHeight }
+      : null;
+    updatePotential(qStateRef.current, barrier, 1e6);
+  }, [params.showBarrier, params.barrierCenter, params.barrierWidth, params.barrierHeight]);
 
-  const handleApply = useCallback(() => {
+  // Restart wave function (keep current barrier settings)
+  const handleRestartWave = useCallback(() => {
     qStateRef.current = buildQuantumState(params);
     setProb(1);
   }, [params]);
+
+  // Reset everything to defaults
+  const handleResetAll = useCallback(() => {
+    dispatch({ type: "RESET_SETTINGS" });
+    qStateRef.current = buildQuantumState(initialParams);
+    setProb(1);
+  }, []);
 
   const handleTick = useCallback(() => {
     if (qStateRef.current) {
@@ -118,23 +135,12 @@ export default function QuantumBoxPage() {
           onTick={handleTick}
         />
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleApply}
-            className="cursor-pointer rounded-md border border-accent/40 bg-accent-muted px-4 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
-          >
-            Apply &amp; Restart
-          </button>
-          <span className="text-xs text-text-muted">
-            Adjust parameters then click Apply to restart the simulation
-          </span>
-        </div>
-
         <QuantumControls
           state={params}
           dispatch={dispatch}
           totalProb={prob}
-          onReset={handleReset}
+          onRestartWave={handleRestartWave}
+          onResetAll={handleResetAll}
         />
       </main>
 

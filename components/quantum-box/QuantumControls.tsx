@@ -8,14 +8,16 @@ interface QuantumControlsProps {
   state: QuantumBoxState;
   dispatch: React.Dispatch<QuantumBoxAction>;
   totalProb: number;
-  onReset: () => void;
+  onRestartWave: () => void;
+  onResetAll: () => void;
 }
 
 export default function QuantumControls({
   state,
   dispatch,
   totalProb,
-  onReset,
+  onRestartWave,
+  onResetAll,
 }: QuantumControlsProps) {
   const V0 = state.showBarrier ? state.barrierHeight : 0;
   const wn = computeWaveNumbers(state.k0, V0);
@@ -31,8 +33,11 @@ export default function QuantumControls({
         >
           {state.running ? "Pause" : "Play"}
         </Button>
-        <Button onClick={onReset} variant="secondary" size="sm">
-          Reset
+        <Button onClick={onRestartWave} variant="secondary" size="sm">
+          Restart Wave
+        </Button>
+        <Button onClick={onResetAll} variant="secondary" size="sm">
+          Reset All
         </Button>
         <div className="h-6 w-px bg-border" />
         <label className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -126,6 +131,23 @@ export default function QuantumControls({
                 value={state.k0}
                 onChange={(e) =>
                   dispatch({ type: "SET_K0", value: Number(e.target.value) })
+                }
+                className="w-full accent-accent"
+              />
+            </div>
+            <div>
+              <label className="mb-1 flex items-center justify-between text-text-muted">
+                <span>Amplitude</span>
+                <span className="font-mono">{state.amplitude.toFixed(2)}</span>
+              </label>
+              <input
+                type="range"
+                min="0.1"
+                max="3.0"
+                step="0.1"
+                value={state.amplitude}
+                onChange={(e) =>
+                  dispatch({ type: "SET_AMPLITUDE", value: Number(e.target.value) })
                 }
                 className="w-full accent-accent"
               />

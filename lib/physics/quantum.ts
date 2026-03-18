@@ -81,19 +81,33 @@ export function createPotential(
     V[N - 1 - i] = wallHeight;
   }
 
-  // Barrier
+  // Barrier with smoothed edges (sigmoid transition to avoid Gibbs ringing)
   if (barrier) {
-    const bStart = (barrier.center - barrier.width / 2) * L;
-    const bEnd = (barrier.center + barrier.width / 2) * L;
+    const bCenter = barrier.center * L;
+    const bHalfWidth = (barrier.width / 2) * L;
+    // Smoothing length: ~2 grid points worth, prevents sharp discontinuity
+    const smoothLen = Math.max(dx * 3, bHalfWidth * 0.1);
     for (let i = 3; i < N - 3; i++) {
       const x = i * dx;
-      if (x >= bStart && x <= bEnd) {
-        V[i] = barrier.height;
-      }
+      const distFromCenter = Math.abs(x - bCenter);
+      // Smooth step: 1 inside barrier, tapers to 0 at edges
+      const edgeDist = distFromCenter - bHalfWidth;
+      const sigmoid = 1 / (1 + Math.exp(edgeDist / (smoothLen * 0.3)));
+      V[i] = Math.max(V[i], barrier.height * sigmoid);
     }
   }
 
   return V;
+}
+
+/** Update potential in-place on an existing quantum state (for live barrier changes). */
+export function updatePotential(
+  state: QuantumState,
+  barrier: BarrierConfig | null,
+  wallHeight: number
+): void {
+  const newV = createPotential(state.N, state.L, barrier, wallHeight);
+  state.potential.set(newV);
 }
 
 export function createGaussianWavePacket(
@@ -101,7 +115,8 @@ export function createGaussianWavePacket(
   L: number,
   x0: number,
   sigma: number,
-  k0: number
+  k0: number,
+  amplitude: number = 1.0
 ): { re: Float64Array; im: Float64Array } {
   const re = new Float64Array(N);
   const im = new Float64Array(N);
@@ -118,11 +133,12 @@ export function createGaussianWavePacket(
     norm += re[i] ** 2 + im[i] ** 2;
   }
 
+  // Normalize then scale by amplitude
   norm = Math.sqrt(norm * dx);
   if (norm > 0) {
     for (let i = 0; i < N; i++) {
-      re[i] /= norm;
-      im[i] /= norm;
+      re[i] = (re[i] / norm) * amplitude;
+      im[i] = (im[i] / norm) * amplitude;
     }
   }
 
@@ -177,13 +193,14 @@ export function initQuantumState(
   k0: number,
   barrier: BarrierConfig | null,
   wallHeight: number,
-  mode: "packet" | "plane"
+  mode: "packet" | "plane",
+  amplitude: number = 1.0
 ): QuantumState {
   const dx = L / N;
   const potential = createPotential(N, L, barrier, wallHeight);
   const { re, im } = mode === "packet"
-    ? createGaussianWavePacket(N, L, x0, sigma, k0)
-    : createPlaneWave(N, L, k0, 1.0);
+    ? createGaussianWavePacket(N, L, x0, sigma, k0, amplitude)
+    : createPlaneWave(N, L, k0, amplitude);
 
   return { N, L, dx, psiRe: re, psiIm: im, potential };
 }
