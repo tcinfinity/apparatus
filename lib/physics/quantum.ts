@@ -1,11 +1,29 @@
 /**
- * Quantum mechanics utilities for 1D particle in a box with potential barrier.
+ * Quantum mechanics utilities for 1D scattering simulation.
  *
  * Split-operator FFT method for time-dependent Schrödinger equation.
  * Units: ℏ = 1, m = 1 (natural units).
  */
 
-// Simple radix-2 FFT (in-place, Cooley–Tukey)
+/* ── Domain constants ─────────────────────────────────────────────── */
+export const L_COMP = 12; // computational domain length
+export const ABSORB_WIDTH = 1; // absorbing region on each side
+export const VIS_LEFT = ABSORB_WIDTH; // = 1
+export const VIS_RIGHT = L_COMP - ABSORB_WIDTH; // = 11
+export const L_VIS = VIS_RIGHT - VIS_LEFT; // = 10
+
+/** Convert user coordinate [0, 1] → absolute computational coordinate */
+export function userToAbs(u: number): number {
+  return VIS_LEFT + u * L_VIS;
+}
+
+/** Convert absolute computational coordinate → user coordinate [0, 1] */
+export function absToUser(a: number): number {
+  return (a - VIS_LEFT) / L_VIS;
+}
+
+/* ── FFT ──────────────────────────────────────────────────────────── */
+
 function fft(re: Float64Array, im: Float64Array, invert: boolean) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -26,12 +44,15 @@ function fft(re: Float64Array, im: Float64Array, invert: boolean) {
     const wRe = Math.cos(angle);
     const wIm = Math.sin(angle);
     for (let i = 0; i < n; i += len) {
-      let curRe = 1, curIm = 0;
+      let curRe = 1,
+        curIm = 0;
       for (let j = 0; j < len / 2; j++) {
         const uRe = re[i + j];
         const uIm = im[i + j];
-        const vRe = re[i + j + len / 2] * curRe - im[i + j + len / 2] * curIm;
-        const vIm = re[i + j + len / 2] * curIm + im[i + j + len / 2] * curRe;
+        const vRe =
+          re[i + j + len / 2] * curRe - im[i + j + len / 2] * curIm;
+        const vIm =
+          re[i + j + len / 2] * curIm + im[i + j + len / 2] * curRe;
         re[i + j] = uRe + vRe;
         im[i + j] = uIm + vIm;
         re[i + j + len / 2] = uRe - vRe;
@@ -51,11 +72,16 @@ function fft(re: Float64Array, im: Float64Array, invert: boolean) {
   }
 }
 
+/* ── Types ────────────────────────────────────────────────────────── */
+
 export interface BarrierConfig {
-  center: number;
-  width: number;
-  height: number;
+  id: string;
+  center: number; // fraction of visible domain [0, 1]
+  width: number; // fraction of visible domain
+  height: number; // V₀ in energy units
 }
+
+export type WallType = "none" | "infinite" | "finite";
 
 export interface QuantumState {
   N: number;
@@ -64,35 +90,89 @@ export interface QuantumState {
   psiRe: Float64Array;
   psiIm: Float64Array;
   potential: Float64Array;
+  absorbing: Float64Array;
+  leftWall: WallType;
+  rightWall: WallType;
+}
+
+/* ── Potential ────────────────────────────────────────────────────── */
+
+function createAbsorbing(
+  N: number,
+  L: number,
+  leftWall: WallType,
+  rightWall: WallType
+): Float64Array {
+  const absorb = new Float64Array(N);
+  const dx = L / N;
+  const gammaMax = 500;
+
+  for (let i = 0; i < N; i++) {
+    const x = i * dx;
+    // Left absorber
+    if (leftWall === "none" && x < ABSORB_WIDTH) {
+      const frac = (ABSORB_WIDTH - x) / ABSORB_WIDTH;
+      absorb[i] = gammaMax * frac * frac;
+    }
+    // Right absorber
+    if (rightWall === "none" && x > L - ABSORB_WIDTH) {
+      const frac = (x - (L - ABSORB_WIDTH)) / ABSORB_WIDTH;
+      absorb[i] = gammaMax * frac * frac;
+    }
+  }
+
+  return absorb;
 }
 
 export function createPotential(
   N: number,
   L: number,
-  barrier: BarrierConfig | null,
-  wallHeight: number
+  barriers: BarrierConfig[],
+  leftWall: WallType,
+  rightWall: WallType,
+  leftWallHeight: number,
+  rightWallHeight: number
 ): Float64Array {
   const V = new Float64Array(N);
   const dx = L / N;
 
-  // Hard walls at boundaries
-  for (let i = 0; i < 3; i++) {
-    V[i] = wallHeight;
-    V[N - 1 - i] = wallHeight;
+  // Walls: finite walls are narrow potential steps at the visible boundary
+  if (leftWall === "finite") {
+    const wallPos = VIS_LEFT;
+    for (let i = 0; i < N; i++) {
+      const x = i * dx;
+      if (x <= wallPos + dx * 2) {
+        // Smooth ramp into the wall over 2 grid points
+        const d = wallPos + dx * 2 - x;
+        const frac = Math.min(1, d / (dx * 2));
+        V[i] = Math.max(V[i], leftWallHeight * frac);
+      }
+    }
+  }
+  if (rightWall === "finite") {
+    const wallPos = VIS_RIGHT;
+    for (let i = 0; i < N; i++) {
+      const x = i * dx;
+      if (x >= wallPos - dx * 2) {
+        const d = x - (wallPos - dx * 2);
+        const frac = Math.min(1, d / (dx * 2));
+        V[i] = Math.max(V[i], rightWallHeight * frac);
+      }
+    }
   }
 
-  // Barrier with smoothed edges (sigmoid transition to avoid Gibbs ringing)
-  if (barrier) {
-    const bCenter = barrier.center * L;
-    const bHalfWidth = (barrier.width / 2) * L;
-    // Smoothing length: ~2 grid points worth, prevents sharp discontinuity
-    const smoothLen = Math.max(dx * 3, bHalfWidth * 0.1);
-    for (let i = 3; i < N - 3; i++) {
+  // Barriers with steep sigmoid edges (nearly rectangular)
+  for (const barrier of barriers) {
+    const bCenter = userToAbs(barrier.center);
+    const bHalfWidth = (barrier.width / 2) * L_VIS;
+    // Tight sigmoid: transition over ~2 grid points
+    const sigmoidScale = Math.max(dx * 0.5, 0.001);
+
+    for (let i = 0; i < N; i++) {
       const x = i * dx;
       const distFromCenter = Math.abs(x - bCenter);
-      // Smooth step: 1 inside barrier, tapers to 0 at edges
       const edgeDist = distFromCenter - bHalfWidth;
-      const sigmoid = 1 / (1 + Math.exp(edgeDist / (smoothLen * 0.3)));
+      const sigmoid = 1 / (1 + Math.exp(edgeDist / sigmoidScale));
       V[i] = Math.max(V[i], barrier.height * sigmoid);
     }
   }
@@ -100,15 +180,33 @@ export function createPotential(
   return V;
 }
 
-/** Update potential in-place on an existing quantum state (for live barrier changes). */
+/** Update potential in-place on an existing quantum state. */
 export function updatePotential(
   state: QuantumState,
-  barrier: BarrierConfig | null,
-  wallHeight: number
+  barriers: BarrierConfig[],
+  leftWall: WallType,
+  rightWall: WallType,
+  leftWallHeight: number,
+  rightWallHeight: number
 ): void {
-  const newV = createPotential(state.N, state.L, barrier, wallHeight);
+  const newV = createPotential(
+    state.N,
+    state.L,
+    barriers,
+    leftWall,
+    rightWall,
+    leftWallHeight,
+    rightWallHeight
+  );
   state.potential.set(newV);
+  // Also update absorbing array if wall types changed
+  const newAbsorb = createAbsorbing(state.N, state.L, leftWall, rightWall);
+  state.absorbing.set(newAbsorb);
+  state.leftWall = leftWall;
+  state.rightWall = rightWall;
 }
+
+/* ── Wave functions ───────────────────────────────────────────────── */
 
 export function createGaussianWavePacket(
   N: number,
@@ -121,8 +219,9 @@ export function createGaussianWavePacket(
   const re = new Float64Array(N);
   const im = new Float64Array(N);
   const dx = L / N;
-  const sigmaAbs = sigma * L;
-  const x0Abs = x0 * L;
+  // x0 and sigma are in user coords [0,1]; convert to absolute
+  const x0Abs = userToAbs(x0);
+  const sigmaAbs = sigma * L_VIS;
 
   let norm = 0;
   for (let i = 0; i < N; i++) {
@@ -133,7 +232,6 @@ export function createGaussianWavePacket(
     norm += re[i] ** 2 + im[i] ** 2;
   }
 
-  // Normalize then scale by amplitude
   norm = Math.sqrt(norm * dx);
   if (norm > 0) {
     for (let i = 0; i < N; i++) {
@@ -155,21 +253,18 @@ export function createPlaneWave(
   const im = new Float64Array(N);
   const dx = L / N;
 
-  // Windowed plane wave: envelope near left side, tapering at walls
   for (let i = 0; i < N; i++) {
     const x = i * dx;
-    const frac = x / L;
-    // Smooth envelope: ramps up from left wall, constant in middle, ramps down at right
-    const env = Math.sin(Math.PI * frac) ** 0.3;
+    // Smooth envelope: ramps up/down in absorbing region
+    const fromLeft = x / ABSORB_WIDTH;
+    const fromRight = (L - x) / ABSORB_WIDTH;
+    const env =
+      Math.min(1, Math.max(0, fromLeft)) *
+      Math.min(1, Math.max(0, fromRight));
     re[i] = amplitude * env * Math.cos(k0 * x);
     im[i] = amplitude * env * Math.sin(k0 * x);
   }
 
-  // Enforce walls
-  re[0] = im[0] = 0;
-  re[N - 1] = im[N - 1] = 0;
-
-  // Normalize
   let norm = 0;
   for (let i = 0; i < N; i++) {
     norm += re[i] ** 2 + im[i] ** 2;
@@ -185,31 +280,56 @@ export function createPlaneWave(
   return { re, im };
 }
 
+/* ── State initialization ─────────────────────────────────────────── */
+
 export function initQuantumState(
   N: number,
-  L: number,
   x0: number,
   sigma: number,
   k0: number,
-  barrier: BarrierConfig | null,
-  wallHeight: number,
+  barriers: BarrierConfig[],
+  leftWall: WallType,
+  rightWall: WallType,
+  leftWallHeight: number,
+  rightWallHeight: number,
   mode: "packet" | "plane",
   amplitude: number = 1.0
 ): QuantumState {
+  const L = L_COMP;
   const dx = L / N;
-  const potential = createPotential(N, L, barrier, wallHeight);
-  const { re, im } = mode === "packet"
-    ? createGaussianWavePacket(N, L, x0, sigma, k0, amplitude)
-    : createPlaneWave(N, L, k0, amplitude);
+  const potential = createPotential(
+    N,
+    L,
+    barriers,
+    leftWall,
+    rightWall,
+    leftWallHeight,
+    rightWallHeight
+  );
+  const absorbing = createAbsorbing(N, L, leftWall, rightWall);
+  const { re, im } =
+    mode === "packet"
+      ? createGaussianWavePacket(N, L, x0, sigma, k0, amplitude)
+      : createPlaneWave(N, L, k0, amplitude);
 
-  return { N, L, dx, psiRe: re, psiIm: im, potential };
+  return {
+    N,
+    L,
+    dx,
+    psiRe: re,
+    psiIm: im,
+    potential,
+    absorbing,
+    leftWall,
+    rightWall,
+  };
 }
 
-/**
- * Split-operator time evolution: one step of size dt.
- */
+/* ── Time evolution ───────────────────────────────────────────────── */
+
 export function evolve(state: QuantumState, dt: number): void {
-  const { N, L, psiRe, psiIm, potential } = state;
+  const { N, L, psiRe, psiIm, potential, absorbing, leftWall, rightWall } =
+    state;
 
   // Half-step potential
   for (let i = 0; i < N; i++) {
@@ -252,10 +372,33 @@ export function evolve(state: QuantumState, dt: number): void {
     psiIm[i] = r * s + im * c;
   }
 
-  // Hard-wall BCs
-  psiRe[0] = psiIm[0] = 0;
-  psiRe[N - 1] = psiIm[N - 1] = 0;
+  // Absorbing boundary conditions (smooth damping near edges)
+  for (let i = 0; i < N; i++) {
+    if (absorbing[i] > 0) {
+      const damp = Math.exp(-absorbing[i] * dt);
+      psiRe[i] *= damp;
+      psiIm[i] *= damp;
+    }
+  }
+
+  // Enforce infinite wall BCs
+  if (leftWall === "infinite") {
+    const wallIdx = Math.ceil((VIS_LEFT / L) * N);
+    for (let i = 0; i <= wallIdx; i++) {
+      psiRe[i] = 0;
+      psiIm[i] = 0;
+    }
+  }
+  if (rightWall === "infinite") {
+    const wallIdx = Math.floor((VIS_RIGHT / L) * N);
+    for (let i = wallIdx; i < N; i++) {
+      psiRe[i] = 0;
+      psiIm[i] = 0;
+    }
+  }
 }
+
+/* ── Observables ──────────────────────────────────────────────────── */
 
 export function probabilityDensity(state: QuantumState): Float64Array {
   const { N, psiRe, psiIm } = state;
@@ -275,27 +418,26 @@ export function totalProbability(state: QuantumState): number {
   return sum * dx;
 }
 
-/**
- * Compute wave numbers for display.
- * k₁ = incident, k₂ = transmitted (real if E > V), κ₂ = evanescent (if E < V).
- */
-export function computeWaveNumbers(k1: number, V0: number): {
+/* ── Wave number display ──────────────────────────────────────────── */
+
+export function computeWaveNumbers(
+  k1: number,
+  V0: number
+): {
   k1: number;
   E: number;
   k2: number | null;
   kappa2: number | null;
   regime: "above" | "below" | "no-barrier";
 } {
-  const E = (k1 * k1) / 2; // ℏ=1, m=1: E = ℏ²k²/(2m)
+  const E = (k1 * k1) / 2;
   if (V0 <= 0) {
     return { k1, E, k2: null, kappa2: null, regime: "no-barrier" };
   }
   if (E > V0) {
-    // E > V₀: transmitted wave has real k₂ = √(2m(E-V₀))/ℏ
     const k2 = Math.sqrt(2 * (E - V0));
     return { k1, E, k2, kappa2: null, regime: "above" };
   } else {
-    // E < V₀: evanescent κ₂ = √(2m(V₀-E))/ℏ
     const kappa2 = Math.sqrt(2 * (V0 - E));
     return { k1, E, k2: null, kappa2, regime: "below" };
   }
