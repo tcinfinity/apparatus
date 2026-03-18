@@ -410,6 +410,11 @@ function computeBulge(R: number, halfHeight: number): number {
   return R > 0 ? bulge : -bulge;
 }
 
+/** Compute fill opacity from refractive index: n=1 → 0, n=2.5 → 0.7 */
+function nToOpacity(n: number): number {
+  return Math.max(0, Math.min(0.7, ((n - 1) / 1.5) * 0.7));
+}
+
 function drawLensSymbol(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -418,52 +423,46 @@ function drawLensSymbol(
   lens: Lens,
   selected: boolean
 ) {
-  ctx.strokeStyle = selected ? "rgba(124,58,237,0.9)" : "rgba(167,139,250,0.6)";
+  const strokeColor = selected ? "rgba(124,58,237,0.9)" : "rgba(167,139,250,0.6)";
+  ctx.strokeStyle = strokeColor;
   ctx.lineWidth = selected ? 2.5 : 2;
   const h = halfHeight;
+  const fillAlpha = nToOpacity(lens.refractiveIndex);
+  const fillColor = `rgba(147,130,230,${fillAlpha.toFixed(2)})`;
 
   if (lens.allowDifferentCurvature) {
-    // Use actual R1/R2 values to determine curvature
     const bulge1 = computeBulge(lens.r1, h);
     const bulge2 = computeBulge(lens.r2, h);
 
-    // Left surface (R1)
+    // Build closed shape for fill
+    ctx.beginPath();
     if (Math.abs(bulge1) < 0.5) {
-      ctx.beginPath();
       ctx.moveTo(cx, cy - h);
       ctx.lineTo(cx, cy + h);
-      ctx.stroke();
     } else {
-      ctx.beginPath();
       ctx.moveTo(cx, cy - h);
       ctx.quadraticCurveTo(cx + bulge1, cy, cx, cy + h);
-      ctx.stroke();
     }
-
-    // Right surface (R2) — note: negative R2 means center of curvature to the left, so bulges right
     if (Math.abs(bulge2) < 0.5) {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - h);
-      ctx.lineTo(cx, cy + h);
-      ctx.stroke();
+      ctx.lineTo(cx, cy - h);
     } else {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - h);
-      ctx.quadraticCurveTo(cx - bulge2, cy, cx, cy + h);
-      ctx.stroke();
+      ctx.quadraticCurveTo(cx - bulge2, cy, cx, cy - h);
     }
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.stroke();
   } else {
-    // Default shapes based on type
     switch (lens.type) {
       case "biconvex": {
         const bulge = h * 0.3;
         ctx.beginPath();
         ctx.moveTo(cx, cy - h);
         ctx.quadraticCurveTo(cx + bulge, cy, cx, cy + h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - h);
-        ctx.quadraticCurveTo(cx - bulge, cy, cx, cy + h);
+        ctx.quadraticCurveTo(cx - bulge, cy, cx, cy - h);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
         ctx.stroke();
         break;
       }
@@ -472,18 +471,11 @@ function drawLensSymbol(
         ctx.beginPath();
         ctx.moveTo(cx + bulge * 0.5, cy - h);
         ctx.quadraticCurveTo(cx - bulge * 0.5, cy, cx + bulge * 0.5, cy + h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - bulge * 0.5, cy - h);
-        ctx.quadraticCurveTo(cx + bulge * 0.5, cy, cx - bulge * 0.5, cy + h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - bulge * 0.5, cy - h);
-        ctx.lineTo(cx + bulge * 0.5, cy - h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - bulge * 0.5, cy + h);
-        ctx.lineTo(cx + bulge * 0.5, cy + h);
+        ctx.lineTo(cx - bulge * 0.5, cy + h);
+        ctx.quadraticCurveTo(cx + bulge * 0.5, cy, cx - bulge * 0.5, cy - h);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
         ctx.stroke();
         break;
       }
@@ -491,11 +483,11 @@ function drawLensSymbol(
         const bulge = h * 0.3;
         ctx.beginPath();
         ctx.moveTo(cx, cy - h);
-        ctx.lineTo(cx, cy + h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - h);
         ctx.quadraticCurveTo(cx + bulge, cy, cx, cy + h);
+        ctx.lineTo(cx, cy - h);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
         ctx.stroke();
         break;
       }
@@ -503,11 +495,11 @@ function drawLensSymbol(
         const bulge = h * 0.3;
         ctx.beginPath();
         ctx.moveTo(cx - bulge * 0.3, cy - h);
-        ctx.lineTo(cx - bulge * 0.3, cy + h);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - bulge * 0.3, cy - h);
         ctx.quadraticCurveTo(cx + bulge * 0.5, cy, cx - bulge * 0.3, cy + h);
+        ctx.lineTo(cx - bulge * 0.3, cy - h);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
         ctx.stroke();
         break;
       }
@@ -555,8 +547,9 @@ function drawThickLensSymbol(
   ctx.lineWidth = selected ? 2.5 : 2;
   const h = halfHeight;
 
-  // Fill lens medium
-  ctx.fillStyle = "rgba(124,58,237,0.06)";
+  // Fill lens medium based on refractive index
+  const thickFillAlpha = nToOpacity(lens.refractiveIndex);
+  ctx.fillStyle = `rgba(147,130,230,${thickFillAlpha.toFixed(2)})`;
   ctx.beginPath();
   ctx.rect(cx - halfThickPx, cy - h, halfThickPx * 2, h * 2);
   ctx.fill();

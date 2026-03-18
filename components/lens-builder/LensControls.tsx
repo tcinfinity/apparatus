@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
 import Button from "@/components/ui/Button";
 import type { Lens, LensObject, LensType, ImageInfo } from "./types";
 import { getDefaultFocalLength, getDefaultRadii, getEffectiveFocalLength } from "@/lib/physics/optics";
@@ -167,23 +167,28 @@ export default function LensControls({
             />
 
             {!selectedLens.allowDifferentCurvature && (
-              <div className="col-span-2">
-                <label className="mb-1 block text-text-muted">
-                  Focal Length: {selectedLens.focalLength.toFixed(0)}
-                </label>
-                <input
-                  type="range"
-                  min="-300"
-                  max="300"
-                  step="5"
-                  value={selectedLens.focalLength}
-                  onChange={(e) =>
-                    onUpdateLens(selectedLens.id, { focalLength: Number(e.target.value) })
-                  }
-                  className="w-full accent-accent"
-                />
-              </div>
+              <SliderWithInput
+                label="Focal Length"
+                value={selectedLens.focalLength}
+                min={-300}
+                max={300}
+                step={5}
+                onChange={(v) => onUpdateLens(selectedLens.id, { focalLength: v })}
+                className="col-span-2"
+              />
             )}
+
+            {/* Refractive index — always available */}
+            <SliderWithInput
+              label="Refractive Index (n)"
+              value={selectedLens.refractiveIndex}
+              min={1.0}
+              max={2.5}
+              step={0.01}
+              precision={2}
+              onChange={(v) => onUpdateLens(selectedLens.id, { refractiveIndex: v })}
+              className="col-span-2"
+            />
 
             <label className="col-span-2 flex cursor-pointer items-center gap-2 text-text-muted">
               <input
@@ -199,38 +204,22 @@ export default function LensControls({
 
             {selectedLens.allowDifferentCurvature && (
               <>
-                <div>
-                  <label className="mb-1 block text-text-muted">
-                    R1: {isFinite(selectedLens.r1) ? selectedLens.r1.toFixed(0) : "∞"}
-                  </label>
-                  <input
-                    type="range"
-                    min="-500"
-                    max="500"
-                    step="5"
-                    value={isFinite(selectedLens.r1) ? selectedLens.r1 : 500}
-                    onChange={(e) =>
-                      onUpdateLens(selectedLens.id, { r1: Number(e.target.value) })
-                    }
-                    className="w-full accent-accent"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-text-muted">
-                    R2: {isFinite(selectedLens.r2) ? selectedLens.r2.toFixed(0) : "∞"}
-                  </label>
-                  <input
-                    type="range"
-                    min="-500"
-                    max="500"
-                    step="5"
-                    value={isFinite(selectedLens.r2) ? selectedLens.r2 : -500}
-                    onChange={(e) =>
-                      onUpdateLens(selectedLens.id, { r2: Number(e.target.value) })
-                    }
-                    className="w-full accent-accent"
-                  />
-                </div>
+                <SliderWithInput
+                  label={`R1: ${isFinite(selectedLens.r1) ? selectedLens.r1.toFixed(0) : "∞"}`}
+                  value={isFinite(selectedLens.r1) ? selectedLens.r1 : 500}
+                  min={-500}
+                  max={500}
+                  step={5}
+                  onChange={(v) => onUpdateLens(selectedLens.id, { r1: v })}
+                />
+                <SliderWithInput
+                  label={`R2: ${isFinite(selectedLens.r2) ? selectedLens.r2.toFixed(0) : "∞"}`}
+                  value={isFinite(selectedLens.r2) ? selectedLens.r2 : -500}
+                  min={-500}
+                  max={500}
+                  step={5}
+                  onChange={(v) => onUpdateLens(selectedLens.id, { r2: v })}
+                />
 
                 <label className="col-span-2 flex cursor-pointer items-center gap-2 text-text-muted">
                   <input
@@ -246,38 +235,14 @@ export default function LensControls({
 
                 {selectedLens.thickLensMode && (
                   <>
-                    <div>
-                      <label className="mb-1 block text-text-muted">
-                        Thickness: {selectedLens.thickness.toFixed(0)}
-                      </label>
-                      <input
-                        type="range"
-                        min="1"
-                        max="100"
-                        step="1"
-                        value={selectedLens.thickness}
-                        onChange={(e) =>
-                          onUpdateLens(selectedLens.id, { thickness: Number(e.target.value) })
-                        }
-                        className="w-full accent-accent"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-text-muted">
-                        n: {selectedLens.refractiveIndex.toFixed(2)}
-                      </label>
-                      <input
-                        type="range"
-                        min="1.0"
-                        max="2.5"
-                        step="0.01"
-                        value={selectedLens.refractiveIndex}
-                        onChange={(e) =>
-                          onUpdateLens(selectedLens.id, { refractiveIndex: Number(e.target.value) })
-                        }
-                        className="w-full accent-accent"
-                      />
-                    </div>
+                    <SliderWithInput
+                      label="Thickness"
+                      value={selectedLens.thickness}
+                      min={1}
+                      max={100}
+                      step={1}
+                      onChange={(v) => onUpdateLens(selectedLens.id, { thickness: v })}
+                    />
                   </>
                 )}
               </>
@@ -358,22 +323,15 @@ export default function LensControls({
               value={selectedObject.height}
               onChange={(v) => onUpdateObject(selectedObject.id, { height: v })}
             />
-            <div className="col-span-2">
-              <label className="mb-1 block text-text-muted">
-                Height: {selectedObject.height.toFixed(0)}
-              </label>
-              <input
-                type="range"
-                min="10"
-                max="200"
-                step="5"
-                value={selectedObject.height}
-                onChange={(e) =>
-                  onUpdateObject(selectedObject.id, { height: Number(e.target.value) })
-                }
-                className="w-full accent-accent"
-              />
-            </div>
+            <SliderWithInput
+              label="Height"
+              value={selectedObject.height}
+              min={10}
+              max={200}
+              step={5}
+              onChange={(v) => onUpdateObject(selectedObject.id, { height: v })}
+              className="col-span-2"
+            />
           </div>
         </div>
       )}
@@ -477,6 +435,82 @@ function EditableValue({
           +
         </button>
       </div>
+    </div>
+  );
+}
+
+function SliderWithInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  precision = 0,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  precision?: number;
+  onChange: (v: number) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+
+  const displayValue = precision > 0 ? value.toFixed(precision) : value.toFixed(0);
+
+  const commitEdit = () => {
+    const v = Number(editText);
+    if (!isNaN(v)) {
+      onChange(Math.max(min, Math.min(max, v)));
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div className={className}>
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-text-muted">{label}</span>
+        {editing ? (
+          <input
+            type="text"
+            inputMode="decimal"
+            autoFocus
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="w-16 rounded border border-accent/50 bg-background px-1.5 py-0.5 text-right font-mono text-xs text-foreground focus:outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setEditText(displayValue);
+              setEditing(true);
+            }}
+            className="cursor-pointer rounded px-1.5 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-surface-hover"
+            title="Click to type a value"
+          >
+            {displayValue}
+          </button>
+        )}
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-accent [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-sm"
+      />
     </div>
   );
 }

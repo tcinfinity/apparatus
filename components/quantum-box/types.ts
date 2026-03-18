@@ -1,18 +1,26 @@
 import type { BarrierConfig } from "@/lib/physics/quantum";
 
+export type WaveMode = "packet" | "plane";
+
 export interface QuantumBoxState {
   // Wave packet initial conditions
-  x0: number; // center position (0..1 fraction of L)
-  sigma: number; // width (fraction of L)
-  k0: number; // initial momentum
+  x0: number;       // center position (fraction of L)
+  sigma: number;    // width (fraction of L)
+  k0: number;       // incident wavenumber k₁
+  energy: number;   // E = ℏ²k₁²/(2m) — computed from k0
 
-  // Box parameters
-  barriers: BarrierConfig[];
-  wallHeight: number;
+  // Barrier
+  barrierCenter: number;  // fraction of L
+  barrierWidth: number;   // fraction of L
+  barrierHeight: number;  // V₀ in energy units
+  showBarrier: boolean;
+
+  // Mode
+  mode: WaveMode;
 
   // Simulation control
   running: boolean;
-  speed: number; // dt multiplier
+  speed: number;
   showReal: boolean;
   showImag: boolean;
   showProbability: boolean;
@@ -26,8 +34,9 @@ export type QuantumBoxAction =
   | { type: "SET_SPEED"; value: number }
   | { type: "TOGGLE_RUNNING" }
   | { type: "TOGGLE_SHOW"; field: "showReal" | "showImag" | "showProbability" | "showPotential" }
-  | { type: "ADD_BARRIER" }
-  | { type: "REMOVE_BARRIER"; index: number }
-  | { type: "UPDATE_BARRIER"; index: number; updates: Partial<BarrierConfig> }
-  | { type: "SET_WALL_HEIGHT"; value: number }
+  | { type: "SET_BARRIER_CENTER"; value: number }
+  | { type: "SET_BARRIER_WIDTH"; value: number }
+  | { type: "SET_BARRIER_HEIGHT"; value: number }
+  | { type: "TOGGLE_BARRIER" }
+  | { type: "SET_MODE"; mode: WaveMode }
   | { type: "RESET" };

@@ -34,7 +34,6 @@ export default function WaveCanvas({
   runningRef.current = running;
   const speedRef = useRef(speed);
   speedRef.current = speed;
-
   const showRealRef = useRef(showReal);
   showRealRef.current = showReal;
   const showImagRef = useRef(showImag);
@@ -61,7 +60,6 @@ export default function WaveCanvas({
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Background
     ctx.fillStyle = "#0d0d14";
     ctx.fillRect(0, 0, w, h);
 
@@ -69,9 +67,9 @@ export default function WaveCanvas({
     const margin = 40;
     const plotW = w - margin * 2;
     const plotH = h - margin * 2;
-    const centerY = margin + plotH * 0.5;
+    const centerY = margin + plotH * 0.55; // slightly below center to give room for positive amplitudes
 
-    // Draw grid
+    // Grid lines
     ctx.strokeStyle = "rgba(30,30,50,0.5)";
     ctx.lineWidth = 0.5;
     for (let gy = 0; gy <= 4; gy++) {
@@ -82,16 +80,6 @@ export default function WaveCanvas({
       ctx.stroke();
     }
 
-    // Axis labels
-    ctx.fillStyle = "rgba(136,136,160,0.6)";
-    ctx.font = "11px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("0", margin, h - 10);
-    ctx.fillText("L", margin + plotW, h - 10);
-    ctx.fillText("x", margin + plotW / 2, h - 10);
-    ctx.textAlign = "right";
-    ctx.fillText("ψ", margin - 8, centerY + 4);
-
     // X-axis
     ctx.strokeStyle = "rgba(136,136,160,0.3)";
     ctx.lineWidth = 1;
@@ -100,15 +88,23 @@ export default function WaveCanvas({
     ctx.lineTo(margin + plotW, centerY);
     ctx.stroke();
 
-    // Scale factor for wave function display
+    // Axis labels
+    ctx.fillStyle = "rgba(136,136,160,0.5)";
+    ctx.font = "11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("0", margin, h - 12);
+    ctx.fillText("L", margin + plotW, h - 12);
+    ctx.fillText("x", margin + plotW / 2, h - 12);
+
+    // Scale: auto-scale to max amplitude
     const pd = probabilityDensity(state);
     let maxAmp = 0;
     for (let i = 0; i < N; i++) {
       maxAmp = Math.max(maxAmp, Math.abs(psiRe[i]), Math.abs(psiIm[i]), Math.sqrt(pd[i]));
     }
-    const scale = maxAmp > 0 ? (plotH * 0.4) / maxAmp : 1;
+    const waveScale = maxAmp > 1e-10 ? (plotH * 0.35) / maxAmp : 1;
 
-    // Potential display
+    // Potential (barrier) — drawn as filled region
     if (showPotRef.current) {
       let maxV = 0;
       for (let i = 0; i < N; i++) {
@@ -116,85 +112,103 @@ export default function WaveCanvas({
           maxV = Math.max(maxV, potential[i]);
         }
       }
-      const vScale = maxV > 0 ? (plotH * 0.4) / maxV : 0;
+      if (maxV > 0) {
+        const vScale = (plotH * 0.35) / maxV;
 
-      ctx.fillStyle = "rgba(251,191,36,0.08)";
-      ctx.strokeStyle = "rgba(251,191,36,0.5)";
-      ctx.lineWidth = 1.5;
+        // Fill
+        ctx.fillStyle = "rgba(136,136,160,0.12)";
+        ctx.beginPath();
+        ctx.moveTo(margin, centerY);
+        for (let i = 0; i < N; i++) {
+          const x = margin + (i / (N - 1)) * plotW;
+          const v = Math.min(potential[i], maxV);
+          ctx.lineTo(x, centerY - v * vScale);
+        }
+        ctx.lineTo(margin + plotW, centerY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Outline
+        ctx.strokeStyle = "rgba(136,136,160,0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < N; i++) {
+          const x = margin + (i / (N - 1)) * plotW;
+          const v = Math.min(potential[i], maxV);
+          if (v > 0.01) {
+            if (!started) {
+              ctx.moveTo(x, centerY - v * vScale);
+              started = true;
+            } else {
+              ctx.lineTo(x, centerY - v * vScale);
+            }
+          }
+        }
+        ctx.stroke();
+
+        // V₀ label
+        ctx.fillStyle = "rgba(136,136,160,0.6)";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "left";
+        // Find barrier center
+        for (let i = Math.floor(N * 0.3); i < N; i++) {
+          if (potential[i] > 0 && potential[i] < 1e6) {
+            const x = margin + (i / (N - 1)) * plotW;
+            ctx.fillText("V₀", x + 4, centerY - maxV * vScale - 4);
+            break;
+          }
+        }
+      }
+    }
+
+    // Probability density |ψ|²
+    if (showProbRef.current) {
+      ctx.fillStyle = "rgba(124,58,237,0.12)";
       ctx.beginPath();
       ctx.moveTo(margin, centerY);
       for (let i = 0; i < N; i++) {
         const x = margin + (i / (N - 1)) * plotW;
-        const v = Math.min(potential[i], maxV);
-        const y = centerY - v * vScale;
-        if (i === 0) ctx.lineTo(x, y);
-        else ctx.lineTo(x, y);
+        ctx.lineTo(x, centerY - Math.sqrt(pd[i]) * waveScale);
       }
       ctx.lineTo(margin + plotW, centerY);
       ctx.closePath();
       ctx.fill();
-      ctx.beginPath();
-      for (let i = 0; i < N; i++) {
-        const x = margin + (i / (N - 1)) * plotW;
-        const v = Math.min(potential[i], maxV);
-        const y = centerY - v * vScale;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    }
 
-    // Draw probability density |ψ|²
-    if (showProbRef.current) {
-      ctx.fillStyle = "rgba(124,58,237,0.15)";
       ctx.strokeStyle = "rgba(167,139,250,0.9)";
       ctx.lineWidth = 2;
-
-      // Fill
-      ctx.beginPath();
-      ctx.moveTo(margin, centerY);
-      for (let i = 0; i < N; i++) {
-        const x = margin + (i / (N - 1)) * plotW;
-        const y = centerY - Math.sqrt(pd[i]) * scale;
-        ctx.lineTo(x, y);
-      }
-      ctx.lineTo(margin + plotW, centerY);
-      ctx.closePath();
-      ctx.fill();
-
-      // Stroke
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
         const x = margin + (i / (N - 1)) * plotW;
-        const y = centerY - Math.sqrt(pd[i]) * scale;
+        const y = centerY - Math.sqrt(pd[i]) * waveScale;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
 
-    // Draw Re(ψ)
+    // Re(ψ)
     if (showRealRef.current) {
       ctx.strokeStyle = "#3b82f6";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
         const x = margin + (i / (N - 1)) * plotW;
-        const y = centerY - psiRe[i] * scale;
+        const y = centerY - psiRe[i] * waveScale;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
 
-    // Draw Im(ψ)
+    // Im(ψ)
     if (showImagRef.current) {
       ctx.strokeStyle = "#f97316";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
         const x = margin + (i / (N - 1)) * plotW;
-        const y = centerY - psiIm[i] * scale;
+        const y = centerY - psiIm[i] * waveScale;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -206,16 +220,16 @@ export default function WaveCanvas({
     if (showProbRef.current) legendItems.push({ color: "rgba(167,139,250,0.9)", label: "|ψ|" });
     if (showRealRef.current) legendItems.push({ color: "#3b82f6", label: "Re(ψ)" });
     if (showImagRef.current) legendItems.push({ color: "#f97316", label: "Im(ψ)" });
-    if (showPotRef.current) legendItems.push({ color: "rgba(251,191,36,0.5)", label: "V(x)" });
+    if (showPotRef.current) legendItems.push({ color: "rgba(136,136,160,0.5)", label: "V(x)" });
 
     ctx.font = "11px monospace";
     ctx.textAlign = "left";
     let lx = margin + 8;
     for (const item of legendItems) {
       ctx.fillStyle = item.color;
-      ctx.fillRect(lx, margin + 8, 12, 2);
-      ctx.fillText(item.label, lx + 16, margin + 14);
-      lx += ctx.measureText(item.label).width + 30;
+      ctx.fillRect(lx, margin + 8, 14, 2);
+      ctx.fillText(item.label, lx + 18, margin + 14);
+      lx += ctx.measureText(item.label).width + 36;
     }
 
     // Box walls
@@ -232,7 +246,7 @@ export default function WaveCanvas({
   }, []);
 
   useEffect(() => {
-    const dt = 0.05;
+    const dt = 0.005; // smaller dt for stability
 
     const loop = () => {
       const state = stateRef.current;

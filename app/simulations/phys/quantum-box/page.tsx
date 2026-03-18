@@ -12,13 +12,17 @@ const N = 1024;
 const L = 10;
 
 const initialParams: QuantumBoxState = {
-  x0: 0.25,
-  sigma: 0.04,
-  k0: 40,
-  barriers: [],
-  wallHeight: 1e6,
+  x0: 0.2,
+  sigma: 0.06,
+  k0: 12,
+  energy: 72, // k²/2
+  barrierCenter: 0.5,
+  barrierWidth: 0.03,
+  barrierHeight: 200,
+  showBarrier: true,
+  mode: "packet",
   running: false,
-  speed: 3,
+  speed: 5,
   showReal: true,
   showImag: false,
   showProbability: true,
@@ -32,32 +36,23 @@ function reducer(state: QuantumBoxState, action: QuantumBoxAction): QuantumBoxSt
     case "SET_SIGMA":
       return { ...state, sigma: action.value };
     case "SET_K0":
-      return { ...state, k0: action.value };
+      return { ...state, k0: action.value, energy: (action.value ** 2) / 2 };
     case "SET_SPEED":
       return { ...state, speed: action.value };
     case "TOGGLE_RUNNING":
       return { ...state, running: !state.running };
     case "TOGGLE_SHOW":
       return { ...state, [action.field]: !state[action.field] };
-    case "ADD_BARRIER":
-      return {
-        ...state,
-        barriers: [...state.barriers, { center: 0.5, width: 0.02, height: 500 }],
-      };
-    case "REMOVE_BARRIER":
-      return {
-        ...state,
-        barriers: state.barriers.filter((_, i) => i !== action.index),
-      };
-    case "UPDATE_BARRIER":
-      return {
-        ...state,
-        barriers: state.barriers.map((b, i) =>
-          i === action.index ? { ...b, ...action.updates } : b
-        ),
-      };
-    case "SET_WALL_HEIGHT":
-      return { ...state, wallHeight: action.value };
+    case "SET_BARRIER_CENTER":
+      return { ...state, barrierCenter: action.value };
+    case "SET_BARRIER_WIDTH":
+      return { ...state, barrierWidth: action.value };
+    case "SET_BARRIER_HEIGHT":
+      return { ...state, barrierHeight: action.value };
+    case "TOGGLE_BARRIER":
+      return { ...state, showBarrier: !state.showBarrier };
+    case "SET_MODE":
+      return { ...state, mode: action.mode };
     case "RESET":
       return { ...initialParams };
     default:
@@ -66,15 +61,10 @@ function reducer(state: QuantumBoxState, action: QuantumBoxAction): QuantumBoxSt
 }
 
 function buildQuantumState(params: QuantumBoxState): QuantumState {
-  return initQuantumState(
-    N,
-    L,
-    params.x0,
-    params.sigma,
-    params.k0,
-    params.barriers,
-    params.wallHeight
-  );
+  const barrier = params.showBarrier
+    ? { center: params.barrierCenter, width: params.barrierWidth, height: params.barrierHeight }
+    : null;
+  return initQuantumState(N, L, params.x0, params.sigma, params.k0, barrier, 1e6, params.mode);
 }
 
 export default function QuantumBoxPage() {
@@ -83,7 +73,6 @@ export default function QuantumBoxPage() {
   const [prob, setProb] = useState(1);
   const qStateRef = useRef<QuantumState | null>(null);
 
-  // Initialize on first render
   if (!qStateRef.current) {
     qStateRef.current = buildQuantumState(params);
   }
@@ -94,7 +83,7 @@ export default function QuantumBoxPage() {
     setProb(1);
   }, []);
 
-  const handleResetWithParams = useCallback(() => {
+  const handleApply = useCallback(() => {
     qStateRef.current = buildQuantumState(params);
     setProb(1);
   }, [params]);
@@ -129,15 +118,15 @@ export default function QuantumBoxPage() {
           onTick={handleTick}
         />
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleResetWithParams}
-            className="cursor-pointer rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text-muted transition-colors hover:text-foreground"
+            onClick={handleApply}
+            className="cursor-pointer rounded-md border border-accent/40 bg-accent-muted px-4 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
           >
-            Apply & Restart
+            Apply &amp; Restart
           </button>
-          <span className="self-center text-xs text-text-muted">
-            Change wave packet parameters then click Apply to restart with new settings
+          <span className="text-xs text-text-muted">
+            Adjust parameters then click Apply to restart the simulation
           </span>
         </div>
 
