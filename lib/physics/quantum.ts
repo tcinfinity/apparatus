@@ -108,18 +108,23 @@ function createAbsorbing(
   const absorb = new Float64Array(N);
   const dx = L / N;
   const gammaMax = 500;
+  // Absorbing zone extends from computational edge INTO the visible domain
+  // by 10% on each side, so the wave smoothly fades before going off-screen.
+  const visOverlap = L_VIS * 0.1;
+  const leftEdge = VIS_LEFT + visOverlap; // abs coord where absorption fades to 0
+  const rightEdge = VIS_RIGHT - visOverlap; // abs coord where absorption starts
 
   for (let i = 0; i < N; i++) {
     const x = i * dx;
-    // Left absorber
-    if (leftWall === "none" && x < ABSORB_WIDTH) {
-      const frac = (ABSORB_WIDTH - x) / ABSORB_WIDTH;
-      absorb[i] = gammaMax * frac * frac;
+    // Left absorber (ramps from 0 at leftEdge to gammaMax at x=0)
+    if (leftWall === "none" && x < leftEdge) {
+      const frac = (leftEdge - x) / leftEdge;
+      absorb[i] = gammaMax * frac * frac * frac; // cubic for smooth onset
     }
     // Right absorber
-    if (rightWall === "none" && x > L - ABSORB_WIDTH) {
-      const frac = (x - (L - ABSORB_WIDTH)) / ABSORB_WIDTH;
-      absorb[i] = gammaMax * frac * frac;
+    if (rightWall === "none" && x > rightEdge) {
+      const frac = (x - rightEdge) / (L - rightEdge);
+      absorb[i] = gammaMax * frac * frac * frac;
     }
   }
 
