@@ -25,6 +25,8 @@ export interface QuantumBoxState {
   rightWall: WallType;
   leftWallHeight: number;
   rightWallHeight: number;
+  leftWallPos: number; // user coord [0, 1]
+  rightWallPos: number; // user coord [0, 1]
 
   // Mode
   mode: WaveMode;
@@ -66,6 +68,8 @@ export type QuantumBoxAction =
   | { type: "SET_RIGHT_WALL"; wall: WallType }
   | { type: "SET_LEFT_WALL_HEIGHT"; value: number }
   | { type: "SET_RIGHT_WALL_HEIGHT"; value: number }
+  | { type: "SET_LEFT_WALL_POS"; value: number }
+  | { type: "SET_RIGHT_WALL_POS"; value: number }
   | { type: "SET_MODE"; mode: WaveMode }
   | { type: "SET_VIEW"; center: number; scale: number }
   | { type: "RESET_SETTINGS" }

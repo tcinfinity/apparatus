@@ -6,8 +6,8 @@
  */
 
 /* ── Domain constants ─────────────────────────────────────────────── */
-export const L_COMP = 12; // computational domain length
-export const ABSORB_WIDTH = 1; // absorbing region on each side
+export const L_COMP = 14; // computational domain length
+export const ABSORB_WIDTH = 2; // absorbing region on each side
 export const VIS_LEFT = ABSORB_WIDTH; // = 1
 export const VIS_RIGHT = L_COMP - ABSORB_WIDTH; // = 11
 export const L_VIS = VIS_RIGHT - VIS_LEFT; // = 10
@@ -93,6 +93,8 @@ export interface QuantumState {
   absorbing: Float64Array;
   leftWall: WallType;
   rightWall: WallType;
+  leftWallPos: number; // user coord [0, 1]
+  rightWallPos: number; // user coord [0, 1]
 }
 
 /* ── Potential ────────────────────────────────────────────────────── */
@@ -131,30 +133,31 @@ export function createPotential(
   leftWall: WallType,
   rightWall: WallType,
   leftWallHeight: number,
-  rightWallHeight: number
+  rightWallHeight: number,
+  leftWallPos: number = 0,
+  rightWallPos: number = 1
 ): Float64Array {
   const V = new Float64Array(N);
   const dx = L / N;
 
-  // Walls: finite walls are narrow potential steps at the visible boundary
+  // Walls: finite walls are narrow potential steps at the wall position
   if (leftWall === "finite") {
-    const wallPos = VIS_LEFT;
+    const wallAbs = userToAbs(leftWallPos);
     for (let i = 0; i < N; i++) {
       const x = i * dx;
-      if (x <= wallPos + dx * 2) {
-        // Smooth ramp into the wall over 2 grid points
-        const d = wallPos + dx * 2 - x;
+      if (x <= wallAbs + dx * 2) {
+        const d = wallAbs + dx * 2 - x;
         const frac = Math.min(1, d / (dx * 2));
         V[i] = Math.max(V[i], leftWallHeight * frac);
       }
     }
   }
   if (rightWall === "finite") {
-    const wallPos = VIS_RIGHT;
+    const wallAbs = userToAbs(rightWallPos);
     for (let i = 0; i < N; i++) {
       const x = i * dx;
-      if (x >= wallPos - dx * 2) {
-        const d = x - (wallPos - dx * 2);
+      if (x >= wallAbs - dx * 2) {
+        const d = x - (wallAbs - dx * 2);
         const frac = Math.min(1, d / (dx * 2));
         V[i] = Math.max(V[i], rightWallHeight * frac);
       }
@@ -187,7 +190,9 @@ export function updatePotential(
   leftWall: WallType,
   rightWall: WallType,
   leftWallHeight: number,
-  rightWallHeight: number
+  rightWallHeight: number,
+  leftWallPos: number = 0,
+  rightWallPos: number = 1
 ): void {
   const newV = createPotential(
     state.N,
@@ -196,14 +201,17 @@ export function updatePotential(
     leftWall,
     rightWall,
     leftWallHeight,
-    rightWallHeight
+    rightWallHeight,
+    leftWallPos,
+    rightWallPos
   );
   state.potential.set(newV);
-  // Also update absorbing array if wall types changed
   const newAbsorb = createAbsorbing(state.N, state.L, leftWall, rightWall);
   state.absorbing.set(newAbsorb);
   state.leftWall = leftWall;
   state.rightWall = rightWall;
+  state.leftWallPos = leftWallPos;
+  state.rightWallPos = rightWallPos;
 }
 
 /* ── Wave functions ───────────────────────────────────────────────── */
@@ -293,7 +301,9 @@ export function initQuantumState(
   leftWallHeight: number,
   rightWallHeight: number,
   mode: "packet" | "plane",
-  amplitude: number = 1.0
+  amplitude: number = 1.0,
+  leftWallPos: number = 0,
+  rightWallPos: number = 1
 ): QuantumState {
   const L = L_COMP;
   const dx = L / N;
@@ -304,7 +314,9 @@ export function initQuantumState(
     leftWall,
     rightWall,
     leftWallHeight,
-    rightWallHeight
+    rightWallHeight,
+    leftWallPos,
+    rightWallPos
   );
   const absorbing = createAbsorbing(N, L, leftWall, rightWall);
   const { re, im } =
@@ -322,6 +334,8 @@ export function initQuantumState(
     absorbing,
     leftWall,
     rightWall,
+    leftWallPos,
+    rightWallPos,
   };
 }
 
@@ -381,16 +395,18 @@ export function evolve(state: QuantumState, dt: number): void {
     }
   }
 
-  // Enforce infinite wall BCs
+  // Enforce infinite wall BCs at wall positions
   if (leftWall === "infinite") {
-    const wallIdx = Math.ceil((VIS_LEFT / L) * N);
+    const wallAbs = userToAbs(state.leftWallPos);
+    const wallIdx = Math.ceil((wallAbs / L) * N);
     for (let i = 0; i <= wallIdx; i++) {
       psiRe[i] = 0;
       psiIm[i] = 0;
     }
   }
   if (rightWall === "infinite") {
-    const wallIdx = Math.floor((VIS_RIGHT / L) * N);
+    const wallAbs = userToAbs(state.rightWallPos);
+    const wallIdx = Math.floor((wallAbs / L) * N);
     for (let i = wallIdx; i < N; i++) {
       psiRe[i] = 0;
       psiIm[i] = 0;

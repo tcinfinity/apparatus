@@ -32,6 +32,8 @@ interface WaveCanvasProps {
   selectedBarrierId: string | null;
   leftWall: WallType;
   rightWall: WallType;
+  leftWallPos: number;
+  rightWallPos: number;
 }
 
 export default function WaveCanvas({
@@ -53,6 +55,8 @@ export default function WaveCanvas({
   selectedBarrierId,
   leftWall,
   rightWall,
+  leftWallPos,
+  rightWallPos,
 }: WaveCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
@@ -94,6 +98,10 @@ export default function WaveCanvas({
   leftWallRef.current = leftWall;
   const rightWallRef = useRef(rightWall);
   rightWallRef.current = rightWall;
+  const leftWallPosRef = useRef(leftWallPos);
+  leftWallPosRef.current = leftWallPos;
+  const rightWallPosRef = useRef(rightWallPos);
+  rightWallPosRef.current = rightWallPos;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -315,13 +323,13 @@ export default function WaveCanvas({
     };
 
     if (leftWallRef.current === "infinite") {
-      const sx = userToScreen(0);
+      const sx = userToScreen(leftWallPosRef.current);
       if (sx > margin - 20 && sx < margin + plotW + 20) {
         drawWallHatch(sx, "left");
       }
     }
     if (rightWallRef.current === "infinite") {
-      const sx = userToScreen(1);
+      const sx = userToScreen(rightWallPosRef.current);
       if (sx > margin - 20 && sx < margin + plotW + 20) {
         drawWallHatch(sx, "right");
       }
@@ -597,15 +605,18 @@ export default function WaveCanvas({
   // ─── Animation loop ───
   useEffect(() => {
     const dt = 0.005;
+    let stepAccumulator = 0;
 
     const loop = () => {
       const state = stateRef.current;
       if (state && runningRef.current) {
-        const steps = Math.max(1, Math.round(speedRef.current));
+        stepAccumulator += speedRef.current;
+        const steps = Math.floor(stepAccumulator);
+        stepAccumulator -= steps;
         for (let s = 0; s < steps; s++) {
           evolve(state, dt);
         }
-        onTickRef.current();
+        if (steps > 0) onTickRef.current();
       }
       draw();
       animRef.current = requestAnimationFrame(loop);

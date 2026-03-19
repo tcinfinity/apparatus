@@ -63,16 +63,16 @@ export default function QuantumControls({
           Speed:
           <input
             type="range"
-            min="1"
+            min="0.2"
             max="20"
-            step="1"
+            step="0.2"
             value={state.speed}
             onChange={(e) =>
               dispatch({ type: "SET_SPEED", value: Number(e.target.value) })
             }
             className="w-20 accent-accent"
           />
-          <span className="w-6 font-mono">{state.speed}</span>
+          <span className="w-8 font-mono">{state.speed < 1 ? state.speed.toFixed(1) : Math.round(state.speed)}</span>
         </label>
         <div className="h-6 w-px bg-border" />
         <span className="text-xs text-text-muted">
@@ -246,18 +246,26 @@ export default function QuantumControls({
               label="Left wall"
               value={state.leftWall}
               height={state.leftWallHeight}
+              position={state.leftWallPos}
               onChange={(w) => dispatch({ type: "SET_LEFT_WALL", wall: w })}
               onHeightChange={(v) =>
                 dispatch({ type: "SET_LEFT_WALL_HEIGHT", value: v })
+              }
+              onPositionChange={(v) =>
+                dispatch({ type: "SET_LEFT_WALL_POS", value: v })
               }
             />
             <WallSelector
               label="Right wall"
               value={state.rightWall}
               height={state.rightWallHeight}
+              position={state.rightWallPos}
               onChange={(w) => dispatch({ type: "SET_RIGHT_WALL", wall: w })}
               onHeightChange={(v) =>
                 dispatch({ type: "SET_RIGHT_WALL_HEIGHT", value: v })
+              }
+              onPositionChange={(v) =>
+                dispatch({ type: "SET_RIGHT_WALL_POS", value: v })
               }
             />
           </div>
@@ -427,14 +435,18 @@ function WallSelector({
   label,
   value,
   height,
+  position,
   onChange,
   onHeightChange,
+  onPositionChange,
 }: {
   label: string;
   value: string;
   height: number;
+  position: number;
   onChange: (w: "none" | "infinite" | "finite") => void;
   onHeightChange: (v: number) => void;
+  onPositionChange: (v: number) => void;
 }) {
   return (
     <div className="text-xs">
@@ -452,17 +464,28 @@ function WallSelector({
           <option value="finite">Finite</option>
         </select>
       </div>
-      {value === "finite" && (
-        <div className="mt-1 ml-18">
+      {value !== "none" && (
+        <div className="mt-1 space-y-1">
           <SliderRow
-            label="Height"
-            value={height}
-            min={10}
-            max={1000}
-            step={10}
-            decimals={0}
-            onChange={onHeightChange}
+            label="Position"
+            value={position}
+            min={0}
+            max={1}
+            step={0.01}
+            decimals={2}
+            onChange={onPositionChange}
           />
+          {value === "finite" && (
+            <SliderRow
+              label="Height"
+              value={height}
+              min={10}
+              max={1000}
+              step={10}
+              decimals={0}
+              onChange={onHeightChange}
+            />
+          )}
         </div>
       )}
     </div>

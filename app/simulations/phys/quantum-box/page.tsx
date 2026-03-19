@@ -44,9 +44,11 @@ const initialParams: QuantumBoxState = {
   rightWall: "none",
   leftWallHeight: 200,
   rightWallHeight: 200,
+  leftWallPos: 0,
+  rightWallPos: 1,
   mode: "packet",
   running: false,
-  speed: 5,
+  speed: 1,
   showReal: true,
   showImag: false,
   showProbability: true,
@@ -114,6 +116,10 @@ function reducer(
       return { ...state, leftWallHeight: action.value };
     case "SET_RIGHT_WALL_HEIGHT":
       return { ...state, rightWallHeight: action.value };
+    case "SET_LEFT_WALL_POS":
+      return { ...state, leftWallPos: action.value };
+    case "SET_RIGHT_WALL_POS":
+      return { ...state, rightWallPos: action.value };
     case "SET_MODE":
       return { ...state, mode: action.mode };
     case "SET_VIEW":
@@ -131,6 +137,8 @@ function reducer(
         ...initialParams,
         barriers: [newBarrier],
         selectedBarrierId: newBarrier.id,
+        leftWallPos: 0,
+        rightWallPos: 1,
       };
     }
     default:
@@ -150,7 +158,9 @@ function buildQuantumState(params: QuantumBoxState): QuantumState {
     params.leftWallHeight,
     params.rightWallHeight,
     params.mode,
-    params.amplitude
+    params.amplitude,
+    params.leftWallPos,
+    params.rightWallPos
   );
 }
 
@@ -173,7 +183,9 @@ export default function QuantumBoxPage() {
       params.leftWall,
       params.rightWall,
       params.leftWallHeight,
-      params.rightWallHeight
+      params.rightWallHeight,
+      params.leftWallPos,
+      params.rightWallPos
     );
   }, [
     params.barriers,
@@ -181,11 +193,23 @@ export default function QuantumBoxPage() {
     params.rightWall,
     params.leftWallHeight,
     params.rightWallHeight,
+    params.leftWallPos,
+    params.rightWallPos,
   ]);
+
+  // Live update wavefunction when wave parameters change
+  useEffect(() => {
+    qStateRef.current = buildQuantumState(params);
+    setProb(totalProbability(qStateRef.current));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.x0, params.sigma, params.k0, params.amplitude, params.mode]);
 
   const handleRestartWave = useCallback(() => {
     qStateRef.current = buildQuantumState(params);
     setProb(1);
+    if (params.running) {
+      dispatch({ type: "TOGGLE_RUNNING" });
+    }
   }, [params]);
 
   const handleResetAll = useCallback(() => {
@@ -261,6 +285,8 @@ export default function QuantumBoxPage() {
           selectedBarrierId={params.selectedBarrierId}
           leftWall={params.leftWall}
           rightWall={params.rightWall}
+          leftWallPos={params.leftWallPos}
+          rightWallPos={params.rightWallPos}
         />
 
         <QuantumControls
