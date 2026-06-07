@@ -99,10 +99,27 @@ function FeynmanIcon() {
   );
 }
 
+function PkaIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      {/* Two circles representing acid-base equilibrium */}
+      <circle cx="10" cy="16" r="6" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="22" cy="16" r="6" stroke="currentColor" strokeWidth="1.5" />
+      {/* H label placeholder lines */}
+      <line x1="8" y1="16" x2="12" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="10" y1="13" x2="10" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Arrow between the circles */}
+      <line x1="17" y1="14" x2="15" y2="14" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+      <line x1="15" y1="18" x2="17" y2="18" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+    </svg>
+  );
+}
+
 const iconMap: Record<string, () => React.ReactElement> = {
   "lens-builder": LensIcon,
   "quantum-box": WaveIcon,
   "feynman-diagram": FeynmanIcon,
+  "pka-game": PkaIcon,
 };
 
 interface SimulationCardProps {

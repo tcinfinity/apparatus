@@ -32,4 +32,12 @@ export const simulations: Simulation[] = [
     tag: "Quantum",
     tagColor: "bg-purple-500/20 text-purple-400",
   },
+  {
+    name: "pKa Quiz",
+    slug: "pka-game",
+    type: "chem",
+    description: "Test your knowledge of acid strength from skeletal structures — classic, timed, and speed-run modes",
+    tag: "Chemistry",
+    tagColor: "bg-green-500/20 text-green-400",
+  },
 ];
